@@ -25,13 +25,16 @@ ENV ROS_DISTRO=foxy
 # Helper para sourcear ROS (dusty-nv usa install/ o setup.bash segun la imagen).
 RUN echo 'if [ -f /opt/ros/${ROS_DISTRO}/install/setup.bash ]; then source /opt/ros/${ROS_DISTRO}/install/setup.bash; else source /opt/ros/${ROS_DISTRO}/setup.bash; fi' > /etc/profile.d/ros_source.sh
 
-# La imagen base trae el repo apt de ROS con la llave de firma VENCIDA
-# (EXPKEYSIG F42ED6FBAB17C654) -> rompe `apt-get update`. Re-bajar la MISMA llave
-# del keyserver no sirve (sigue vencida): hay que traer la llave RENOVADA desde la
-# fuente autoritativa (rosdistro/ros.key). Fallback al keyserver con fingerprint completo.
-RUN (command -v curl >/dev/null 2>&1 || (apt-get update || true; apt-get install -y --no-install-recommends curl ca-certificates)); \
-    ( curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - ) \
-    || apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
+# El repo apt de ROS (foxy/bionic, EOL) viene con la llave de firma VENCIDA y su
+# InRelease ya no valida con la llave renovada -> rompe `apt-get update`. NO
+# usamos debs de ROS (Foxy ya esta desde fuente en la base), asi que DESACTIVAMOS
+# ese repo. colcon (lo unico de ROS que necesitamos) se toma desde pip mas abajo.
+RUN rm -f /etc/apt/sources.list.d/ros2.list \
+          /etc/apt/sources.list.d/ros2-latest.list \
+          /etc/apt/sources.list.d/ros-latest.list 2>/dev/null; \
+    for f in $(grep -rl 'packages.ros.org' /etc/apt/ 2>/dev/null); do \
+        sed -i '/packages.ros.org/d' "$f"; done; \
+    echo "repo apt de ROS desactivado"
 
 # -----------------------------------------------------------------------------
 # 1) Dependencias de sistema (NO-ROS)
@@ -55,9 +58,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-numpy \
         python3-yaml \
         git \
-        python3-colcon-common-extensions \
-        python3-vcstool \
+        curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# colcon (lo necesita el `colcon build`). Suele venir en la base dusty-nv; si no,
+# se instala por pip (incluye colcon-ros para paquetes ament_cmake).
+RUN command -v colcon >/dev/null 2>&1 || \
+    pip3 install --no-cache-dir colcon-common-extensions
 
 # -----------------------------------------------------------------------------
 # 2) OpenCV-contrib (cv2.aruco) por pip — TOLERANTE A FALLO
@@ -96,7 +103,8 @@ ARG BUILD_NAV2=0
 ENV NAV2_WS=/opt/nav2_ws
 RUN if [ "$BUILD_NAV2" = "1" ]; then set -e; \
         apt-get update && apt-get install -y --no-install-recommends \
-            python3-rosdep libceres-dev libsuitesparse-dev libeigen3-dev || true; \
+            libceres-dev libsuitesparse-dev libeigen3-dev || true; \
+        pip3 install --no-cache-dir -U rosdep || true; \
         mkdir -p ${NAV2_WS}/src && cd ${NAV2_WS}/src && \
         git clone -b foxy-devel https://github.com/ros-planning/navigation2.git && \
         cd ${NAV2_WS} && source /etc/profile.d/ros_source.sh && \
