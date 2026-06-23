@@ -135,6 +135,14 @@ RUN source /etc/profile.d/ros_source.sh && \
     MAKEFLAGS="-j2" colcon build --symlink-install \
         --cmake-args -DCMAKE_BUILD_TYPE=Release
 
+# Shells interactivas (p.ej. `docker exec -it capbot bash`) sourcean ROS+workspace.
+RUN printf '%s\n' \
+    'source /etc/profile.d/ros_source.sh' \
+    '[ -f /opt/deps_ws/install/setup.bash ] && source /opt/deps_ws/install/setup.bash' \
+    '[ -f /opt/nav2_ws/install/setup.bash ] && source /opt/nav2_ws/install/setup.bash' \
+    '[ -f /ros_ws/install/setup.bash ] && source /ros_ws/install/setup.bash' \
+    >> /root/.bashrc
+
 # -----------------------------------------------------------------------------
 # 6) Entrypoint
 # -----------------------------------------------------------------------------
