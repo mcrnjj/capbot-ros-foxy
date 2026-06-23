@@ -80,7 +80,9 @@ def generate_launch_description():
             'map_frame': 'map',
             'publish_tf': True,     # Fase 1: ArUco da el TF map->base_link (sin EKF).
             'max_distance': 2.0,
-            'max_reproj_error_px': 3.0,
+            # 6.0 es laxo a proposito: con camera.yaml SIN calibrar el error de
+            # reproyeccion ronda 3-4px. RECALIBRAR camera.yaml y bajar a ~3.0.
+            'max_reproj_error_px': 6.0,
             'min_marker_area_px': 200.0,
             'filter_window': 1,
             'ambiguity_ratio_threshold': 1.5,
