@@ -80,19 +80,23 @@ RUN pip3 install --no-cache-dir "scipy==1.5.4" "websockets<10" || \
     echo "WARN: pip scipy/websockets fallo; revisar wheels cp36/aarch64"
 
 # -----------------------------------------------------------------------------
-# 3) Underlay de paquetes ROS que NO trae `ros-base` (desde fuente).
-#    Fase 1: xacro + joint_state_publisher (Python puro -> build rapido).
-#    (robot_localization llega en la Fase 2; nav2 abajo en la Fase 3.)
+# 3) Underlay: xacro (lo usa el launch via `import xacro`). Solo se compila si
+#    NO viene ya en la base. xacro usa la rama `ros2` (no hay rama por-distro).
+#    joint_state_publisher NO hace falta: los frames que usa ArUco
+#    (base_link -> camera_link_optical) son joints FIJOS y robot_state_publisher
+#    los publica en /tf_static sin /joint_states.
 # -----------------------------------------------------------------------------
 ENV DEPS_WS=/opt/deps_ws
-RUN mkdir -p ${DEPS_WS}/src && cd ${DEPS_WS}/src && \
-    git clone -b ${ROS_DISTRO} https://github.com/ros/xacro.git && \
-    git clone -b ${ROS_DISTRO} https://github.com/ros/joint_state_publisher.git && \
-    cd ${DEPS_WS} && \
-    source /etc/profile.d/ros_source.sh && \
-    colcon build --packages-select xacro joint_state_publisher \
-        --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-    rm -rf ${DEPS_WS}/build ${DEPS_WS}/log ${DEPS_WS}/src/*/.git
+RUN if python3 -c "import xacro" 2>/dev/null; then \
+        echo "xacro ya presente en la base"; \
+    else \
+        mkdir -p ${DEPS_WS}/src && cd ${DEPS_WS}/src && \
+        git clone -b ros2 https://github.com/ros/xacro.git && \
+        cd ${DEPS_WS} && source /etc/profile.d/ros_source.sh && \
+        colcon build --packages-select xacro \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release && \
+        rm -rf ${DEPS_WS}/build ${DEPS_WS}/log ${DEPS_WS}/src/*/.git; \
+    fi
 
 # -----------------------------------------------------------------------------
 # 4) (OPCIONAL, PESADO) nav2 Foxy desde fuente — Fase 3
@@ -108,7 +112,7 @@ RUN if [ "$BUILD_NAV2" = "1" ]; then set -e; \
         mkdir -p ${NAV2_WS}/src && cd ${NAV2_WS}/src && \
         git clone -b foxy-devel https://github.com/ros-planning/navigation2.git && \
         cd ${NAV2_WS} && source /etc/profile.d/ros_source.sh && \
-        source ${DEPS_WS}/install/setup.bash && \
+        if [ -f "${DEPS_WS}/install/setup.bash" ]; then source ${DEPS_WS}/install/setup.bash; fi && \
         (rosdep init || true) && rosdep update || true && \
         rosdep install --from-paths src --ignore-src -r -y || true && \
         MAKEFLAGS="-j2" colcon build --symlink-install \
@@ -124,7 +128,7 @@ ENV WS=/ros_ws
 WORKDIR ${WS}
 COPY src/test_bot ${WS}/src/test_bot
 RUN source /etc/profile.d/ros_source.sh && \
-    source ${DEPS_WS}/install/setup.bash && \
+    if [ -f "${DEPS_WS}/install/setup.bash" ]; then source ${DEPS_WS}/install/setup.bash; fi && \
     if [ -d "${NAV2_WS}/install" ]; then source ${NAV2_WS}/install/setup.bash; fi && \
     MAKEFLAGS="-j2" colcon build --symlink-install \
         --cmake-args -DCMAKE_BUILD_TYPE=Release

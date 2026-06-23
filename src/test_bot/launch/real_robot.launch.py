@@ -44,13 +44,10 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description, 'use_sim_time': False}],
     )
 
-    # Publica /joint_states (ceros) para las ruedas continuas -> TF tree completo.
-    jsp = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        output='screen',
-        parameters=[{'use_sim_time': False}],
-    )
+    # Nota: no se usa joint_state_publisher. Los frames que necesita ArUco
+    # (base_link -> camera_link_optical) son joints FIJOS y robot_state_publisher
+    # los publica en /tf_static sin /joint_states. (Las ruedas continuas no se
+    # publican en TF, pero no hacen falta para localizacion.)
 
     camera = Node(
         package='test_bot', executable='csi_camera_node',
@@ -96,5 +93,5 @@ def generate_launch_description():
             'markers_db',
             default_value=[PKG, '/config/markers_db_', map_name, '.yaml']),
 
-        rsp, jsp, camera, aruco,
+        rsp, camera, aruco,
     ])
