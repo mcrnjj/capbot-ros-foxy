@@ -31,16 +31,22 @@ cat /etc/nv_tegra_release          # ej: "R32 (release), REVISION: 7.1" -> r32.7
 
 ---
 
+> **JetPack 4.x NO trae `docker-compose`.** Lo más simple es usar los scripts
+> `docker/build.sh` y `docker/run.sh` (docker directo, sin compose). Si preferís
+> compose, instalalo con `sudo pip3 install docker-compose` (la versión de `apt`
+> es muy vieja para `runtime: nvidia`).
+
 ## 2. Build
 
 ```bash
 cd capbot-ros-foxy
 
-# Fases 1-2 (cámara + ArUco + EKF + serie + teleop): SIN nav2, build rápido.
-L4T_TAG=r32.7.1 docker compose -f docker/docker-compose.yml build
+# Recomendado (sin compose):
+L4T_TAG=r32.7.1 ./docker/build.sh        # Fases 1-2 (sin nav2, build rápido)
+BUILD_NAV2=1 ./docker/build.sh           # Fase 3 (con nav2, build largo)
 
-# Fase 3 (con nav2 desde fuente): build LARGO -> activa swap antes.
-BUILD_NAV2=1 docker compose -f docker/docker-compose.yml build
+# Equivalente con compose (si lo instalaste):
+L4T_TAG=r32.7.1 docker-compose -f docker/docker-compose.yml build
 ```
 
 > **Swap para el build de nav2** (Nano 4 GB):
@@ -55,15 +61,16 @@ BUILD_NAV2=1 docker compose -f docker/docker-compose.yml build
 
 ```bash
 # HOST_IP = IP del PC donde corre capbot-host (destino del video).
-HOST_IP=192.168.1.10 docker compose -f docker/docker-compose.yml up
+HOST_IP=192.168.1.10 ./docker/run.sh
 
-# Solo localización (sin nav2), aunque la imagen traiga nav2:
-HOST_IP=192.168.1.10 docker compose -f docker/docker-compose.yml run --rm test_bot \
-    ros2 launch test_bot real_robot.launch.py enable_nav:=false
+# Solo localización (sin nav2):
+HOST_IP=192.168.1.10 ./docker/run.sh ros2 launch test_bot real_robot.launch.py enable_nav:=false
 
 # Shell de depuracion (ROS2 + workspace ya sourceados):
-docker compose -f docker/docker-compose.yml run --rm test_bot bash
+./docker/run.sh bash
 ```
+
+> `run.sh` mapea `/dev/ttyTHS1` solo si existe (en Fase 1 no hace falta el ESP32).
 
 ---
 
