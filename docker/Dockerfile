@@ -81,7 +81,9 @@ RUN pip3 install --no-cache-dir "scipy==1.5.4" "websockets<10" || \
 
 # -----------------------------------------------------------------------------
 # 3) Underlay: xacro (lo usa el launch via `import xacro`). Solo se compila si
-#    NO viene ya en la base. xacro usa la rama `ros2` (no hay rama por-distro).
+#    NO viene ya en la base. Se fija el TAG 2.0.3 (release de Foxy): el HEAD de la
+#    rama `ros2` es para distros nuevas y su CMake usa `SCRIPTS_DESTINATION`, que
+#    el ament de Foxy no soporta.
 #    joint_state_publisher NO hace falta: los frames que usa ArUco
 #    (base_link -> camera_link_optical) son joints FIJOS y robot_state_publisher
 #    los publica en /tf_static sin /joint_states.
@@ -91,7 +93,7 @@ RUN if python3 -c "import xacro" 2>/dev/null; then \
         echo "xacro ya presente en la base"; \
     else \
         mkdir -p ${DEPS_WS}/src && cd ${DEPS_WS}/src && \
-        git clone -b ros2 https://github.com/ros/xacro.git && \
+        git clone --depth 1 -b 2.0.3 https://github.com/ros/xacro.git && \
         cd ${DEPS_WS} && source /etc/profile.d/ros_source.sh && \
         colcon build --packages-select xacro \
             --cmake-args -DCMAKE_BUILD_TYPE=Release && \
