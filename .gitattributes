@@ -1,0 +1,9 @@
+# Forzar LF en todos los archivos de texto: el repo se construye/corre en
+# Linux/Docker (Jetson). CRLF rompe scripts shell (entrypoint) en el contenedor.
+* text=auto eol=lf
+
+# Binarios (no tocar saltos de linea)
+*.png binary
+*.pgm binary
+*.jpg binary
+*.stl binary
