@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!--
+    robot_real.urdf.xacro - URDF del robot REAL (Jetson).
+
+    A diferencia de robot.urdf.xacro (sim), NO incluye:
+      - lidar.xacro          (el robot real no tiene lidar)
+      - gazebo_control.xacro  (plugin diff-drive de Gazebo)
+    Solo trae los frames que la pila real necesita:
+      - robot_core.xacro : base_link, base_footprint, chassis, ruedas, caster
+      - camera.xacro     : camera_link + camera_link_optical (frame de ArUco)
+      - imu.xacro         : imu_link (frame; la IMU fisica vive en el ESP32)
+
+    Los bloques <gazebo> dentro de esos xacro son inertes fuera de Gazebo
+    (robot_state_publisher los ignora). La cadena base_link -> camera_link_optical
+    es de joints FIJOS, asi que el TF que usa aruco_localizer se publica sin
+    necesitar /joint_states.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="robot">
+
+    <!-- 'red' lo referencia camera.xacro pero se define aca (no esta en robot_core). -->
+    <material name="red">
+        <color rgba="1 0 0 1"/>
+    </material>
+
+    <xacro:include filename="robot_core.xacro" />
+    <xacro:include filename="camera.xacro" />
+    <xacro:include filename="imu.xacro" />
+
+</robot>

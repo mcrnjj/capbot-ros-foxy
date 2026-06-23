@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>test_bot</name>
+  <version>0.1.0</version>
+  <description>Stack autonomo del Capbot para Jetson Nano (ROS2 Foxy en Docker, base L4T).
+  Localizacion ArUco + camara CSI (IMX219 via GStreamer/PyGObject), EKF (robot_localization)
+  y nav2. Servicio unico que tambien reexpone a la GUI capbot-host (teleop UDP/WS/RTP + nav WS).
+  Robot real (sin simulacion/Gazebo).</description>
+  <maintainer email="mcornejoal04@gmail.com">Manuel Cornejo</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Fase 1: vision/localizacion -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <!-- Fase 2: localizacion (EKF) -->
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+
+  <!-- Fase 3: nav2 -->
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_recoveries</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_waypoint_follower</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+
+  <!-- NO van por rosdep (se instalan en docker/Dockerfile):
+       opencv-contrib-python (cv2.aruco), numpy, scipy, python3-gi/GStreamer,
+       websockets<10 (Python 3.6 del contenedor). -->
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

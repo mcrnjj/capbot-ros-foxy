@@ -1,0 +1,11 @@
+# Contexto de build Docker (raiz de capbot-ros-foxy). El Dockerfile solo COPYa
+# src/test_bot y docker/entrypoint.sh, pero esto achica el contexto subido.
+.git/
+**/__pycache__/
+**/*.pyc
+build/
+install/
+log/
+.vscode/
+*.swp
+.DS_Store

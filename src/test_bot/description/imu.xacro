@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!--
+        IMU para mantener paridad con el robot real (que ya tiene IMU fisica).
+        Publica en /imu/data a 100 Hz. Frame: imu_link.
+        Para uso futuro con robot_localization (EKF wheel+IMU) o como fuente
+        directa de orientacion para correcciones de yaw del aruco_localizer.
+    -->
+
+    <joint name="imu_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="imu_link"/>
+        <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    </joint>
+
+    <link name="imu_link">
+        <visual>
+            <geometry>
+                <box size="0.02 0.02 0.005"/>
+            </geometry>
+            <material name="orange"/>
+        </visual>
+        <xacro:inertial_box mass="0.01" x="0.02" y="0.02" z="0.005">
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+        </xacro:inertial_box>
+    </link>
+
+    <gazebo reference="imu_link">
+        <material>Gazebo/Orange</material>
+        <gravity>true</gravity>
+        <sensor name="imu_sensor" type="imu">
+            <always_on>true</always_on>
+            <update_rate>100</update_rate>
+            <visualize>false</visualize>
+            <imu>
+                <angular_velocity>
+                    <x><noise type="gaussian"><mean>0.0</mean><stddev>0.05</stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0.0</mean><stddev>0.112</stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0.0</mean><stddev>0.073</stddev></noise></z>
+                </angular_velocity>
+                <linear_acceleration>
+                    <x><noise type="gaussian"><mean>0.0</mean><stddev>0.008</stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0.0</mean><stddev>0.011</stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0.0</mean><stddev>0.013</stddev></noise></z>
+                </linear_acceleration>
+            </imu>
+            <plugin name="imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+                <ros>
+                    <remapping>~/out:=imu/data</remapping>
+                </ros>
+                <initial_orientation_as_reference>false</initial_orientation_as_reference>
+                <frame_name>imu_link</frame_name>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+</robot>

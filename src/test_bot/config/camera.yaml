@@ -1,0 +1,43 @@
+# Calibracion de la camara CSI (IMX219) — PLACEHOLDER, *** RECALIBRAR ***
+#
+# Formato camera_calibration (el que carga csi_camera_node.load_camera_info).
+# Los intrinsecos deben corresponder a la resolucion de SALIDA del nodo
+# (output_width x output_height). Aqui 640x480.
+#
+# Estos valores son NOMINALES (no medidos). ArUco fallara en PRECISION hasta
+# que recalibres con `ros2 run camera_calibration cameracalibrator` a 640x480,
+# o reescales una calibracion conocida a esa resolucion.
+#
+# OJO aspect-ratio: capturar 1280x720 (16:9) y escalar a 640x480 (4:3) deforma
+# la imagen. Recomendado: calibrar EXACTAMENTE en el pipeline final, o capturar
+# a una resolucion 4:3 (p.ej. 1280x960) para conservar la geometria.
+image_width: 640
+image_height: 480
+camera_name: imx219
+distortion_model: plumb_bob
+
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [500.0,   0.0, 320.0,
+           0.0, 500.0, 240.0,
+           0.0,   0.0,   1.0]
+
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0,
+         0.0, 1.0, 0.0,
+         0.0, 0.0, 1.0]
+
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [500.0,   0.0, 320.0, 0.0,
+           0.0, 500.0, 240.0, 0.0,
+           0.0,   0.0,   1.0, 0.0]

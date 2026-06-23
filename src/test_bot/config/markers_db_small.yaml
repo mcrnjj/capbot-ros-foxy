@@ -1,0 +1,27 @@
+aruco_dict: DICT_5X5_250
+marker_size: 0.1
+markers:
+- id: 0
+  frame_id: map
+  x: -0.37
+  y: 1.35
+  z: 0.2
+  roll: 1.5707963267948963
+  pitch: 0.0
+  yaw: 1.5707963267948963
+- id: 1
+  frame_id: map
+  x: 0.37
+  y: -1.35
+  z: 0.2
+  roll: 1.5707963267948963
+  pitch: 0.0
+  yaw: -1.5707963267948963
+- id: 2
+  frame_id: map
+  x: -0.37
+  y: -0.5
+  z: 0.2
+  roll: 1.5707963267948963
+  pitch: 0.0
+  yaw: 1.5707963267948963

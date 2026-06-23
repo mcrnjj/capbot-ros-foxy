@@ -1,0 +1,55 @@
+# docker-compose para la Jetson Nano. Formato 2.4 (soporta `runtime: nvidia`
+# con el docker-compose viejo de JetPack 4.x). Construir/correr SIEMPRE en la Jetson.
+#
+#   cd capbot-ros-foxy
+#   docker compose -f docker/docker-compose.yml build               # Fases 1-2 (sin nav2)
+#   BUILD_NAV2=1 docker compose -f docker/docker-compose.yml build   # Fase 3 (con nav2)
+#   HOST_IP=192.168.1.10 docker compose -f docker/docker-compose.yml up
+version: "2.4"
+
+services:
+  test_bot:
+    build:
+      # Contexto = raiz del repo (capbot-ros-foxy), un nivel arriba de docker/.
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        L4T_TAG: ${L4T_TAG:-r32.7.1}
+        BUILD_NAV2: ${BUILD_NAV2:-0}
+    image: capbot-ros-foxy:foxy-l4t
+    container_name: capbot_ros_foxy
+
+    # CUDA + ISP de la Jetson (nvarguscamerasrc, nvv4l2h264enc).
+    runtime: nvidia
+    # La GUI (capbot-host) habla por UDP/WS/RTP a puertos fijos -> red del host.
+    network_mode: host
+    # argus (camara CSI) usa memoria/IPC compartida.
+    ipc: host
+
+    environment:
+      # IP del PC host (destino del video H264/RTP). Sobre-escribir al levantar:
+      #   HOST_IP=192.168.1.10 docker compose ... up
+      - HOST_IP=${HOST_IP:-}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+
+    devices:
+      # Serie hacia el ESP32 (ajustar si tu Nano expone otro tty).
+      - /dev/ttyTHS1:/dev/ttyTHS1
+      # Camara CSI: el runtime nvidia suele montar los nvhost-*; si tu setup
+      # los necesita explicitos, descomenta:
+      # - /dev/nvhost-ctrl:/dev/nvhost-ctrl
+      # - /dev/nvhost-ctrl-gpu:/dev/nvhost-ctrl-gpu
+      # - /dev/nvhost-vic:/dev/nvhost-vic
+      # - /dev/nvmap:/dev/nvmap
+
+    volumes:
+      # Socket de Argus (OBLIGATORIO para la camara CSI dentro del contenedor).
+      - /tmp/argus_socket:/tmp/argus_socket
+      # Tunear config/mapas sin reconstruir la imagen.
+      - ../src/test_bot/config:/ros_ws/install/test_bot/share/test_bot/config:ro
+      - ../src/test_bot/maps:/ros_ws/install/test_bot/share/test_bot/maps:ro
+
+    # Si la camara CSI no abre con runtime+argus_socket, como ULTIMO recurso:
+    # privileged: true
+
+    restart: unless-stopped
