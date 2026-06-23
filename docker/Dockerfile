@@ -25,6 +25,14 @@ ENV ROS_DISTRO=foxy
 # Helper para sourcear ROS (dusty-nv usa install/ o setup.bash segun la imagen).
 RUN echo 'if [ -f /opt/ros/${ROS_DISTRO}/install/setup.bash ]; then source /opt/ros/${ROS_DISTRO}/install/setup.bash; else source /opt/ros/${ROS_DISTRO}/setup.bash; fi' > /etc/profile.d/ros_source.sh
 
+# La imagen base trae el repo apt de ROS con la llave de firma VENCIDA
+# (EXPKEYSIG F42ED6FBAB17C654) -> rompe `apt-get update`. Re-bajar la MISMA llave
+# del keyserver no sirve (sigue vencida): hay que traer la llave RENOVADA desde la
+# fuente autoritativa (rosdistro/ros.key). Fallback al keyserver con fingerprint completo.
+RUN (command -v curl >/dev/null 2>&1 || (apt-get update || true; apt-get install -y --no-install-recommends curl ca-certificates)); \
+    ( curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | apt-key add - ) \
+    || apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
+
 # -----------------------------------------------------------------------------
 # 1) Dependencias de sistema (NO-ROS)
 #    - GStreamer + PyGObject: la captura CSI va por gi.repository.Gst (NO cv2),
