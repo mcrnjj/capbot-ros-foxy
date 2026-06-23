@@ -19,6 +19,7 @@ HOST_IP="${HOST_IP:-}"
 SERIAL_DEV="${SERIAL_DEV:-/dev/ttyTHS1}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 IMAGE="${IMAGE:-capbot-ros-foxy:foxy-l4t}"
+NAME="${NAME:-capbot}"
 
 # El serie es opcional en Fase 1 (solo camara). Solo se mapea si existe.
 DEV_ARGS=()
@@ -29,6 +30,7 @@ else
 fi
 
 exec docker run -it --rm \
+    --name "${NAME}" \
     --runtime nvidia \
     --network host \
     --ipc host \
