@@ -72,16 +72,20 @@ def build_pipeline(sid, cw, ch, ow, oh, fps, flip, enable_video,
     video_branch = (
         "nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! "
         "nvv4l2h264enc insert-sps-pps=true iframeinterval=15 idrinterval=15 "
-        "maxperf-enable=1 bitrate={br} control-rate=1 ! "
+        "maxperf-enable=1 preset-level=1 bitrate={br} control-rate=1 ! "
         "h264parse config-interval=1 ! "
         "rtph264pay pt=96 config-interval=1 mtu=1400 ! "
         "udpsink host={host} port={port} sync=false async=false"
     ).format(br=int(bitrate_kbps) * 1000, host=host, port=port)
 
+    # queue leaky=downstream (descarta frames viejos en vez de acumular) -> baja
+    # latencia. Sin esto los queue bufferean hasta ~1 s y se ve el video con delay.
+    q = "queue leaky=2 max-size-buffers=2 max-size-bytes=0 max-size-time=0"
+
     return (
         src + "tee name=t "
-        "t. ! queue ! " + raw_branch + " "
-        "t. ! queue ! " + video_branch
+        "t. ! " + q + " ! " + raw_branch + " "
+        "t. ! " + q + " ! " + video_branch
     )
 
 
