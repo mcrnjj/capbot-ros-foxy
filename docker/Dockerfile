@@ -145,7 +145,7 @@ RUN set -e; \
     mkdir -p ${RL_WS}/src && cd ${RL_WS}/src && \
     git clone --depth 1 -b foxy-devel https://github.com/cra-ros-pkg/robot_localization.git && \
     git clone --depth 1 -b ros2 https://github.com/ros/diagnostics.git && \
-    git clone --depth 1 -b ros2 https://github.com/ros-geographic-info/geographic_info.git && \
+    git clone --depth 1 -b 1.0.4 https://github.com/ros-geographic-info/geographic_info.git && \
     cd ${RL_WS} && source /etc/profile.d/ros_source.sh && \
     (rosdep init 2>/dev/null || true) && rosdep update || true && \
     rosdep install --from-paths src --ignore-src -r -y \
