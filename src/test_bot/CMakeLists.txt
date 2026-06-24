@@ -27,6 +27,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME csi_camera_node
 )
+install(PROGRAMS
+  scripts/esp32_serial_bridge.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME esp32_serial_bridge
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

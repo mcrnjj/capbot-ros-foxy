@@ -129,6 +129,10 @@ RUN if [ "$BUILD_NAV2" = "1" ]; then set -e; \
         rm -rf /var/lib/apt/lists/*; \
     else echo "nav2 NO compilado (BUILD_NAV2=0). Fase 3: reconstruir con --build-arg BUILD_NAV2=1"; fi
 
+# pyserial para esp32_serial_bridge (Fase 2). Va DESPUES de nav2 para no
+# invalidar su cache (solo runtime; colcon no lo necesita en build).
+RUN pip3 install --no-cache-dir pyserial || true
+
 # -----------------------------------------------------------------------------
 # 5) Workspace del paquete test_bot. Contexto de build = RAIZ del repo.
 # -----------------------------------------------------------------------------

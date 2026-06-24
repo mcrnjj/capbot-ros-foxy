@@ -1,0 +1,82 @@
+### EKF para el robot real (Jetson). robot_localization, ROS2 Foxy.
+#
+# Diferencias respecto al ekf.yaml de sim:
+#   - use_sim_time: false (robot real).
+#   - SIN imu0: el ESP32 transmite odometria YA fusionada (no IMU cruda).
+#   - odom0 = /odom (de esp32_serial_bridge): usamos VELOCIDADES (vx, vyaw).
+#     La pose absoluta la corrige /aruco_pose en el filtro de map.
+#
+# Patron dual-EKF:
+#   - ekf_filter_node_odom : world_frame=odom -> publica TF odom->base_link.
+#       Solo odom (velocidades) -> estimado local suave y continuo.
+#   - ekf_filter_node_map  : world_frame=map  -> publica TF map->odom.
+#       odom (prediccion continua entre vistas de marcador) + /aruco_pose
+#       (correccion ABSOLUTA cuando hay marcador a la vista) -> corrige deriva.
+# Por eso aruco_localizer va con publish_tf:=false (el TF lo dan los EKF).
+#
+# Notas de parametros:
+#   - frequency=30: tasa de SALIDA del filtro (desacoplada del 50 Hz del ESP32;
+#     cada ciclo procesa todas las muestras encoladas, no se pierde data).
+#   - sensor_timeout=0.2: si no llega medicion en ese tiempo, solo predice.
+#   - *_differential / *_relative: solo afectan campos de POSE. En odom0 (solo
+#     velocidades) son inocuos. En pose0 (ArUco) van false = pose ABSOLUTA.
+#   - *_queue_size: buffer de mediciones por ciclo de cada sensor.
+
+### EKF LOCAL (odom -> base_link)
+ekf_filter_node_odom:
+  ros__parameters:
+    use_sim_time: false
+    frequency: 30.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    odom0: /odom
+    # Del /odom usamos velocidades (vx, vyaw). El ESP32 ya integra la pose.
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 5
+
+
+### EKF GLOBAL (map -> odom)
+ekf_filter_node_map:
+  ros__parameters:
+    use_sim_time: false
+    frequency: 30.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: map
+
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 5
+
+    # Correccion absoluta de pose en el frame map (x, y, yaw) desde ArUco.
+    pose0: /aruco_pose
+    pose0_config: [true,  true,  false,
+                   false, false, true,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    pose0_differential: false
+    pose0_relative: false
+    pose0_queue_size: 5
