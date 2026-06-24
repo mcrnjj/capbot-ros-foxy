@@ -35,12 +35,8 @@ def generate_launch_description():
 
     nav2_params = os.path.join(PKG, 'config', 'nav2_params.yaml')
     map_yaml = [PKG, '/config/test_map_', map_name, '.yaml']
-
-    # BT XML: nav2 esta en /opt/nav2_ws (no /opt/ros/foxy), asi que resolvemos
-    # la ruta desde el paquete instalado (sobre-escribe el valor del yaml).
-    bt_xml = os.path.join(
-        get_package_share_directory('nav2_bt_navigator'),
-        'behavior_trees', 'navigate_w_replanning_and_recovery.xml')
+    # OJO: la ruta del BT XML (default_bt_xml_filename) va FIJA en nav2_params.yaml
+    # apuntando a /opt/nav2_ws/...  (override por launch no funcionaba en Foxy).
 
     xacro_file = os.path.join(PKG, 'description', 'robot_real.urdf.xacro')
     robot_description = xacro.process_file(xacro_file).toxml()
