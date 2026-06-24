@@ -37,10 +37,9 @@ apt-get update && apt-get install -y --no-install-recommends \
 mkdir -p "${NAV2_WS}/src"
 cd "${NAV2_WS}"
 
-# Importar fuentes (idempotente: solo si falta navigation2)
-if [ ! -d src/navigation2 ]; then
-    vcs import src < "${SRC_DIR}/nav2.repos"
-fi
+# Importar fuentes (idempotente: vcs clona los que falten y deja los existentes;
+# re-correr toma los repos nuevos que agreguemos al .repos).
+vcs import src < "${SRC_DIR}/nav2.repos" || true
 
 # Paquetes que NO compilamos en este robot:
 #   smac_planner -> necesita ompl (build pesado); usamos navfn (Dijkstra/A*).
@@ -61,7 +60,8 @@ rosdep install --from-paths src --ignore-src -r -y \
                  urdfdom_headers libopensplice67 libopensplice69 \
                  behaviortree_cpp_v3 ompl \
                  gazebo_ros_pkgs gazebo_ros gazebo_dev gazebo_plugins \
-                 slam_toolbox" || true
+                 slam_toolbox nav2_rviz_plugins nav2_smac_planner \
+                 nav2_amcl nav2_system_tests" || true
 
 # Build (incremental; -j2 + swap para no agotar RAM en la Nano).
 MAKEFLAGS="-j2" colcon build --symlink-install \

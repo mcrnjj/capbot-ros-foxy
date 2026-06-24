@@ -19,3 +19,8 @@ repositories:
     type: git
     url: https://github.com/ros/bond_core.git
     version: ros2
+  # map_msgs (lo usa nav2_costmap_2d) + move_base_msgs. No esta en ros-base.
+  navigation_msgs:
+    type: git
+    url: https://github.com/ros-planning/navigation_msgs.git
+    version: foxy
