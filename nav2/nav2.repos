@@ -1,0 +1,21 @@
+# Dependencias desde fuente para nav2 Foxy sobre la base dusty-nv ros-base.
+# Minimo para navegacion (sin gazebo/sim, sin ompl/smac_planner).
+# Si el build falla por un paquete ROS que no esta en la base, se AGREGA aca su
+# repo fuente y se re-corre build_nav2.sh (colcon cachea lo ya compilado).
+repositories:
+  navigation2:
+    type: git
+    url: https://github.com/ros-planning/navigation2.git
+    version: foxy-devel
+  BehaviorTree.CPP:
+    type: git
+    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
+    version: 3.5.6
+  angles:
+    type: git
+    url: https://github.com/ros/angles.git
+    version: ros2
+  bond_core:
+    type: git
+    url: https://github.com/ros/bond_core.git
+    version: ros2
