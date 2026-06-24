@@ -40,6 +40,8 @@ exec docker run -it --rm \
     -v /tmp/argus_socket:/tmp/argus_socket \
     -v "$PWD/src/test_bot/config:/ros_ws/install/test_bot/share/test_bot/config:ro" \
     -v "$PWD/src/test_bot/maps:/ros_ws/install/test_bot/share/test_bot/maps:ro" \
-    -v "$PWD/src/test_bot/scripts:/ros_ws/src/test_bot/scripts:ro" \
     -v "$PWD/src/test_bot/launch:/ros_ws/src/test_bot/launch:ro" \
     "${IMAGE}" "$@"
+    # NOTA: launch/ y config/ son EN VIVO (install(DIRECTORY) -> symlink). Los
+    # nodos Python (install(PROGRAMS) -> copia) requieren rebuild: docker/build.sh
+    # (incremental, rapido).
