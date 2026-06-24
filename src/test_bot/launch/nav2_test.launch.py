@@ -77,7 +77,7 @@ def generate_launch_description():
     bt_navigator = Node(
         package='nav2_bt_navigator', executable='bt_navigator', name='bt_navigator',
         output='screen',
-        parameters=[nav2_params, {'default_bt_xml_filename': bt_xml}],
+        parameters=[nav2_params],
     )
     waypoint_follower = Node(
         package='nav2_waypoint_follower', executable='waypoint_follower',
