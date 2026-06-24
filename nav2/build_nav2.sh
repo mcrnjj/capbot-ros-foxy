@@ -45,7 +45,7 @@ vcs import --force src < "${SRC_DIR}/nav2.repos" || true
 #   smac_planner -> necesita ompl (build pesado); usamos navfn (Dijkstra/A*).
 #   rviz_plugins -> necesita rviz.   system_tests -> tests + gazebo.
 #   amcl -> localizacion por lidar; aca localizamos con EKF + ArUco.
-for p in nav2_smac_planner nav2_rviz_plugins nav2_system_tests nav2_amcl; do
+for p in smac_planner nav2_smac_planner nav2_rviz_plugins nav2_system_tests nav2_amcl; do
     d="$(find src -maxdepth 3 -type d -name "$p" 2>/dev/null | head -n1)"
     [ -n "$d" ] && touch "$d/COLCON_IGNORE"
 done
