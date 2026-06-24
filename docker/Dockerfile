@@ -107,19 +107,25 @@ RUN if python3 -c "import xacro" 2>/dev/null; then \
 # -----------------------------------------------------------------------------
 ARG BUILD_NAV2=0
 ENV NAV2_WS=/opt/nav2_ws
+COPY nav2 /tmp/nav2_recipe
 RUN if [ "$BUILD_NAV2" = "1" ]; then set -e; \
         apt-get update && apt-get install -y --no-install-recommends \
-            libceres-dev libsuitesparse-dev libeigen3-dev || true; \
-        pip3 install --no-cache-dir -U rosdep || true; \
-        mkdir -p ${NAV2_WS}/src && cd ${NAV2_WS}/src && \
-        git clone -b foxy-devel https://github.com/ros-planning/navigation2.git && \
-        cd ${NAV2_WS} && source /etc/profile.d/ros_source.sh && \
-        if [ -f "${DEPS_WS}/install/setup.bash" ]; then source ${DEPS_WS}/install/setup.bash; fi && \
-        (rosdep init || true) && rosdep update || true && \
-        rosdep install --from-paths src --ignore-src -r -y || true && \
-        MAKEFLAGS="-j2" colcon build --symlink-install \
-            --cmake-args -DCMAKE_BUILD_TYPE=Release && \
-        rm -rf ${NAV2_WS}/build ${NAV2_WS}/log ${NAV2_WS}/src/navigation2/.git && \
+            libasio-dev libtinyxml2-dev libzmq3-dev libgraphicsmagick++1-dev \
+            libyaml-cpp-dev libeigen3-dev wget; \
+        pip3 install --no-cache-dir vcstool rosdep; \
+        source /etc/profile.d/ros_source.sh; \
+        [ -f "${DEPS_WS}/install/setup.bash" ] && source ${DEPS_WS}/install/setup.bash; \
+        mkdir -p ${NAV2_WS}/src && cd ${NAV2_WS}; \
+        vcs import src < /tmp/nav2_recipe/nav2.repos; \
+        for p in smac_planner nav2_smac_planner nav2_rviz_plugins nav2_system_tests nav2_amcl; do \
+            d="$(find src -maxdepth 3 -type d -name "$p" | head -n1)"; [ -n "$d" ] && touch "$d/COLCON_IGNORE"; \
+        done; \
+        (rosdep init || true) && rosdep update || true; \
+        rosdep install --from-paths src --ignore-src -r -y \
+            --skip-keys "console_bridge fastcdr fastrtps rti-connext-dds-5.3.1 urdfdom_headers libopensplice67 libopensplice69 behaviortree_cpp_v3 ompl gazebo_ros_pkgs gazebo_ros gazebo_dev gazebo_plugins slam_toolbox nav2_rviz_plugins nav2_smac_planner nav2_amcl nav2_system_tests" || true; \
+        MAKEFLAGS="-j2" colcon build \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release --no-warn-unused-cli; \
+        rm -rf ${NAV2_WS}/build ${NAV2_WS}/log ${NAV2_WS}/src; \
         rm -rf /var/lib/apt/lists/*; \
     else echo "nav2 NO compilado (BUILD_NAV2=0). Fase 3: reconstruir con --build-arg BUILD_NAV2=1"; fi
 
