@@ -34,6 +34,7 @@ Parametros (todos con default):
 
 import os
 import sys
+import time
 import threading
 
 import rclpy
@@ -147,6 +148,9 @@ class CsiCameraNode(Node):
         self.declare_parameter("host_ip", "")
         self.declare_parameter("video_port", 5000)
         self.declare_parameter("video_bitrate_kbps", 4000)
+        # Tasa de publicacion de /camera/image_raw (rama cruda -> aruco). Mas baja
+        # que 'framerate' para no saturar la CPU; el video H264 a la GUI no se afecta.
+        self.declare_parameter("publish_rate", 12.0)
 
         gp = self.get_parameter
         sid = gp("sensor_id").value
@@ -162,6 +166,9 @@ class CsiCameraNode(Node):
         host = gp("host_ip").value or os.environ.get("HOST_IP", "")
         port = gp("video_port").value
         bitrate = gp("video_bitrate_kbps").value
+        pub_rate = float(gp("publish_rate").value)
+        self._pub_period = (1.0 / pub_rate) if pub_rate > 0 else 0.0
+        self._last_pub = 0.0
 
         self.camera_info, ok = load_camera_info(info_url, self.ow, self.oh, self.frame_id)
         if not ok:
@@ -212,6 +219,14 @@ class CsiCameraNode(Node):
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.ERROR
+
+        # Throttle de la rama cruda: publicar a publish_rate (a aruco le sobra) para
+        # no saturar la CPU de la Nano. El video H264 a la GUI NO se afecta (es otra
+        # rama del pipeline). Igual se pulle el sample para liberar el buffer.
+        now = time.monotonic()
+        if self._pub_period > 0.0 and (now - self._last_pub) < self._pub_period:
+            return Gst.FlowReturn.OK
+        self._last_pub = now
 
         buf = sample.get_buffer()
         ok, mapinfo = buf.map(Gst.MapFlags.READ)
