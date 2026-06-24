@@ -133,6 +133,30 @@ RUN if [ "$BUILD_NAV2" = "1" ]; then set -e; \
 # invalidar su cache (solo runtime; colcon no lo necesita en build).
 RUN pip3 install --no-cache-dir pyserial || true
 
+# robot_localization (EKF, Fase 2) desde fuente — Foxy no tiene debs.
+# Va DESPUES de nav2 para no invalidar su cache. Solo se compilan
+# robot_localization + sus deps que faltan en ros-base (diagnostic_updater,
+# geographic_msgs); el resto (eigen, geographiclib, boost) es apt.
+ENV RL_WS=/opt/rl_ws
+RUN set -e; \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libgeographic-dev libeigen3-dev libyaml-cpp-dev || true; \
+    pip3 install --no-cache-dir vcstool rosdep 2>/dev/null || true; \
+    mkdir -p ${RL_WS}/src && cd ${RL_WS}/src && \
+    git clone --depth 1 -b foxy-devel https://github.com/cra-ros-pkg/robot_localization.git && \
+    git clone --depth 1 -b ros2 https://github.com/ros/diagnostics.git && \
+    git clone --depth 1 -b ros2 https://github.com/ros-geographic-info/geographic_info.git && \
+    cd ${RL_WS} && source /etc/profile.d/ros_source.sh && \
+    (rosdep init 2>/dev/null || true) && rosdep update || true && \
+    rosdep install --from-paths src --ignore-src -r -y \
+        --skip-keys "console_bridge fastcdr fastrtps rti-connext-dds-5.3.1 \
+                     urdfdom_headers libopensplice67 libopensplice69 \
+                     diagnostic_updater geographic_msgs" || true; \
+    MAKEFLAGS="-j2" colcon build --packages-up-to robot_localization \
+        --cmake-args -DCMAKE_BUILD_TYPE=Release --no-warn-unused-cli; \
+    rm -rf ${RL_WS}/build ${RL_WS}/log ${RL_WS}/src && \
+    rm -rf /var/lib/apt/lists/*
+
 # -----------------------------------------------------------------------------
 # 5) Workspace del paquete test_bot. Contexto de build = RAIZ del repo.
 # -----------------------------------------------------------------------------
@@ -149,6 +173,7 @@ RUN source /etc/profile.d/ros_source.sh && \
 RUN printf '%s\n' \
     'source /etc/profile.d/ros_source.sh' \
     '[ -f /opt/deps_ws/install/setup.bash ] && source /opt/deps_ws/install/setup.bash' \
+    '[ -f /opt/rl_ws/install/setup.bash ] && source /opt/rl_ws/install/setup.bash' \
     '[ -f /opt/nav2_ws/install/setup.bash ] && source /opt/nav2_ws/install/setup.bash' \
     '[ -f /ros_ws/install/setup.bash ] && source /ros_ws/install/setup.bash' \
     >> /root/.bashrc

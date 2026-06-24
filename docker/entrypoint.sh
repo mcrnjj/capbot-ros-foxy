@@ -10,9 +10,14 @@ else
     source "/opt/ros/${ROS_DISTRO}/setup.bash"
 fi
 
-# Underlay de deps desde fuente (xacro, joint_state_publisher, robot_localization...)
+# Underlay de deps desde fuente (xacro...)
 if [ -f "/opt/deps_ws/install/setup.bash" ]; then
     source "/opt/deps_ws/install/setup.bash"
+fi
+
+# robot_localization (EKF, Fase 2)
+if [ -f "/opt/rl_ws/install/setup.bash" ]; then
+    source "/opt/rl_ws/install/setup.bash"
 fi
 
 # nav2 (si se compilo con BUILD_NAV2=1)
