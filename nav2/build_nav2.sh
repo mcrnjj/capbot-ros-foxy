@@ -37,9 +37,9 @@ apt-get update && apt-get install -y --no-install-recommends \
 mkdir -p "${NAV2_WS}/src"
 cd "${NAV2_WS}"
 
-# Importar fuentes (idempotente: vcs clona los que falten y deja los existentes;
-# re-correr toma los repos nuevos que agreguemos al .repos).
-vcs import src < "${SRC_DIR}/nav2.repos" || true
+# Importar fuentes. --force => si cambiamos la version/rama de un repo en el
+# .repos, al re-correr hace checkout de la nueva (sin esto, vcs deja la vieja).
+vcs import --force src < "${SRC_DIR}/nav2.repos" || true
 
 # Paquetes que NO compilamos en este robot:
 #   smac_planner -> necesita ompl (build pesado); usamos navfn (Dijkstra/A*).
