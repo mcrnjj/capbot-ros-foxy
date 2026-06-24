@@ -32,6 +32,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME esp32_serial_bridge
 )
+install(PROGRAMS
+  scripts/fake_odom.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME fake_odom
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
