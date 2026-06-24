@@ -261,6 +261,10 @@ class Esp32SerialBridge(Node):
             except Exception as e:
                 self.get_logger().warn("Error leyendo serie: %s" % e,
                                        throttle_duration_sec=2.0)
+                # Backoff: sin esto, ante error de I/O (ESP32 desconectado) el
+                # read() falla al instante y el loop gira al 100% de CPU,
+                # degradando el resto (camara/GStreamer).
+                time.sleep(0.5)
                 continue
             if not data:
                 continue
