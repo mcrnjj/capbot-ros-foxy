@@ -138,20 +138,17 @@ RUN pip3 install --no-cache-dir pyserial || true
 # robot_localization + sus deps que faltan en ros-base (diagnostic_updater,
 # geographic_msgs); el resto (eigen, geographiclib, boost) es apt.
 ENV RL_WS=/opt/rl_ws
+# Libs de sistema explicitas (sin rosdep, que depende de red y falla por DNS):
+# robot_localization -> eigen, geographiclib, boost; el resto de deps son ROS
+# (ros-base + diagnostic_updater/geographic_msgs clonados). colcon compila offline.
 RUN set -e; \
     apt-get update && apt-get install -y --no-install-recommends \
-        libgeographic-dev libeigen3-dev libyaml-cpp-dev || true; \
-    pip3 install --no-cache-dir vcstool rosdep 2>/dev/null || true; \
+        libgeographic-dev libeigen3-dev libyaml-cpp-dev libboost-dev; \
     mkdir -p ${RL_WS}/src && cd ${RL_WS}/src && \
     git clone --depth 1 -b foxy-devel https://github.com/cra-ros-pkg/robot_localization.git && \
     git clone --depth 1 -b ros2 https://github.com/ros/diagnostics.git && \
     git clone --depth 1 -b 1.0.4 https://github.com/ros-geographic-info/geographic_info.git && \
     cd ${RL_WS} && source /etc/profile.d/ros_source.sh && \
-    (rosdep init 2>/dev/null || true) && rosdep update || true && \
-    rosdep install --from-paths src --ignore-src -r -y \
-        --skip-keys "console_bridge fastcdr fastrtps rti-connext-dds-5.3.1 \
-                     urdfdom_headers libopensplice67 libopensplice69 \
-                     diagnostic_updater geographic_msgs" || true; \
     MAKEFLAGS="-j2" colcon build --packages-up-to robot_localization \
         --cmake-args -DCMAKE_BUILD_TYPE=Release --no-warn-unused-cli; \
     rm -rf ${RL_WS}/build ${RL_WS}/log ${RL_WS}/src && \
