@@ -88,7 +88,7 @@ def generate_launch_description():
         'max_distance': 2.0,
         # 27 es muy laxo a proposito: con camera.yaml SIN calibrar el error de
         # reproyeccion es alto. RECALIBRAR camera.yaml y bajar a ~3.0.
-        'max_reproj_error_px': 27.0,
+        'max_reproj_error_px': 50.0,
         'min_marker_area_px': 200.0,
         'filter_window': 1,
         'ambiguity_ratio_threshold': 1.5,
