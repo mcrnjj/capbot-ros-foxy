@@ -98,7 +98,7 @@ def generate_launch_description():
         'max_distance': 2.0,
         # 27 es muy laxo a proposito: con camera.yaml SIN calibrar el error de
         # reproyeccion es alto. RECALIBRAR camera.yaml y bajar a ~3.0.
-        'max_reproj_error_px': 50.0,
+        'max_reproj_error_px': 60.0,
         'min_marker_area_px': 200.0,
         'filter_window': 1,
         'ambiguity_ratio_threshold': 1.5,
@@ -127,8 +127,8 @@ def generate_launch_description():
             'odom_frame': 'odom',
             'base_frame': 'base_link',
             'publish_odom_tf': False,   # el EKF local da odom->base_link
-            'max_linear_speed': 0.3,    # m/s; ajustar a la velocidad real
-            'max_angular_speed': 2.0,   # rad/s; idem
+            'max_linear_speed': 0.6,    # m/s; ajustar a la velocidad real
+            'max_angular_speed': 3.0,   # rad/s; idem
             'cmd_vel_timeout': 0.5,
         }],
         condition=IfCondition(enable_motion),
