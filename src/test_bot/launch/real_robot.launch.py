@@ -25,7 +25,7 @@ Uso:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -68,6 +68,11 @@ def generate_launch_description():
             'video_port': 5000,
             'video_bitrate_kbps': 4000,
         }],
+    )
+
+    delayed_camera = TimerAction(
+        period=30.0,
+        actions=[camera]
     )
 
     # Parametros comunes de aruco (publish_tf se setea segun enable_motion).
@@ -157,6 +162,6 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_motion', default_value='true'),
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyTHS1'),
 
-        rsp, camera, aruco_tf, aruco_notf, esp32, ekf_odom, ekf_map,
+        rsp, delayed_camera, aruco_tf, aruco_notf, esp32, ekf_odom, ekf_map,
         teleop_gw, gui_bridge,
     ])
