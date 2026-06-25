@@ -67,6 +67,10 @@ class GuiBridge(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self._action = ActionClient(self, NavigateToPose, "navigate_to_pose")
+        self._nav_ready = False
+        # wait_for_server blocks with time.sleep() internally — run in a thread
+        # so the ROS spin loop (needed for DDS discovery) is never blocked.
+        threading.Thread(target=self._wait_for_nav, daemon=True).start()
 
         # Estado compartido con el hilo WS
         self._lock = threading.Lock()
@@ -88,6 +92,13 @@ class GuiBridge(Node):
 
         self.get_logger().info(
             "gui_bridge_node: WS %d (goals<-, pose/nav_status->). Pose siempre por TF." % self.ws_port)
+
+    def _wait_for_nav(self):
+        if self._action.wait_for_server(timeout_sec=60.0):
+            self._nav_ready = True
+            self.get_logger().info("navigate_to_pose: servidor disponible.")
+        else:
+            self.get_logger().warn("navigate_to_pose: servidor no encontrado en 60 s.")
 
     # ----------------------- timer ROS -----------------------
     def _tick(self):
@@ -122,7 +133,7 @@ class GuiBridge(Node):
 
     # ----------------------- accion nav2 -----------------------
     def _send_goal(self, x, y, yaw):
-        if not self._action.wait_for_server(timeout_sec=0.1):
+        if not self._nav_ready:
             self._set_status("rejected")
             self.get_logger().warn("navigate_to_pose no disponible (nav2 corriendo?).")
             return
