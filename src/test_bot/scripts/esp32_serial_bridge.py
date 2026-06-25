@@ -36,13 +36,14 @@ El EKF publica el TF odom->base_link, asi que aca publish_odom_tf=false por defe
 import math
 import struct
 import threading
+import time
 
 import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Twist, TransformStamped
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Bool, Int16MultiArray
+from std_msgs.msg import Bool, Int8, Int16MultiArray, Float32MultiArray, String
 from tf2_ros import TransformBroadcaster
 
 try:
@@ -59,6 +60,7 @@ DELIMITER = 0x00
 MOTOR_CMD = 0x10
 BRAKE_ON = 0x11
 HEARTBEAT = 0x12
+PID_PARAM = 0x13
 SETPOINT_COMP = 0x14
 MODE_CMD = 0x15
 VEL_CMD = 0x16
@@ -196,11 +198,17 @@ class Esp32SerialBridge(Node):
         self.cmd_vel_timeout = float(gp("cmd_vel_timeout").value)
 
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
+        self.telem_pub = self.create_publisher(String, "/esp32/telemetry", 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
         self.create_subscription(Twist, "/cmd_vel", self._on_cmd_vel, 10)
         self.create_subscription(Int16MultiArray, "/esp32/motor_cmd", self._on_motor_cmd, 10)
         self.create_subscription(Bool, "/esp32/estop", self._on_estop, 10)
+        # PID (0x13), setpoint (0x14) y modo (0x15): los alimenta teleop_gateway
+        # desde la GUI (modo PID / control). data como Float32MultiArray.
+        self.create_subscription(Float32MultiArray, "/esp32/pid_param", self._on_pid_param, 10)
+        self.create_subscription(Float32MultiArray, "/esp32/setpoint", self._on_setpoint, 10)
+        self.create_subscription(Int8, "/esp32/mode", self._on_mode_cmd, 10)
 
         # Estado
         self._mode = None            # None/0/1 para no spamear MODE_CMD
@@ -278,9 +286,14 @@ class Esp32SerialBridge(Node):
     def _handle_telemetry(self, payload):
         import json
         try:
-            data = json.loads(payload.decode("utf-8"))
+            text = payload.decode("utf-8")
+            data = json.loads(text)
         except (UnicodeDecodeError, ValueError):
             return
+        # Reenvia la telemetria cruda (JSON) -> teleop_gateway la difunde por WS a la GUI.
+        smsg = String()
+        smsg.data = text
+        self.telem_pub.publish(smsg)
         odo = data.get("odo")
         if not isinstance(odo, dict):
             return
@@ -355,6 +368,26 @@ class Esp32SerialBridge(Node):
         if msg.data:
             self._write(pack_frame(BRAKE_ON))
             self._cmd_vel_active = False
+
+    def _on_pid_param(self, msg):
+        # [ctrl_id, param_id, value] -> PID_PARAM 0x13 <BBf> (igual que cobs_frame.py).
+        if len(msg.data) < 3:
+            return
+        ctrl = int(msg.data[0]) & 0xFF
+        param = int(msg.data[1]) & 0xFF
+        value = float(msg.data[2])
+        self._write(pack_frame(PID_PARAM, struct.pack("<BBf", ctrl, param, value)))
+
+    def _on_setpoint(self, msg):
+        # [comp_id, value] -> SETPOINT_COMP 0x14 <BBf>.
+        if len(msg.data) < 2:
+            return
+        comp = int(msg.data[0]) & 0xFF
+        value = float(msg.data[1])
+        self._write(pack_frame(SETPOINT_COMP, struct.pack("<BBf", comp, 0, value)))
+
+    def _on_mode_cmd(self, msg):
+        self._set_mode(int(msg.data) & 0x01)
 
     def _check_cmd_vel_timeout(self):
         if not self._cmd_vel_active:

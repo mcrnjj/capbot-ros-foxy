@@ -37,6 +37,16 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME fake_odom
 )
+install(PROGRAMS
+  scripts/teleop_gateway.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME teleop_gateway
+)
+install(PROGRAMS
+  scripts/gui_bridge_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME gui_bridge_node
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

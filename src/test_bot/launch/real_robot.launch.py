@@ -134,6 +134,21 @@ def generate_launch_description():
         condition=IfCondition(enable_motion),
     )
 
+    # Gateway hacia la GUI (capbot-host), reexpone los protocolos de teleop:
+    #   - teleop_gateway: UDP joystick/e-stop/PID (5005/6) + WS telemetria (8765)
+    #   - gui_bridge_node: WS nav (8766) -> pose (TF) siempre + goals (cuando haya nav2)
+    teleop_gw = Node(
+        package='test_bot', executable='teleop_gateway', name='teleop_gateway',
+        output='screen', condition=IfCondition(enable_motion),
+    )
+    gui_bridge = Node(
+        package='test_bot', executable='gui_bridge_node', name='gui_bridge_node',
+        output='screen',
+        parameters=[{'ws_port': 8766, 'map_frame': 'map',
+                     'base_frame': 'base_link', 'odom_frame': 'odom'}],
+        condition=IfCondition(enable_motion),
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('map_name', default_value='small'),
         DeclareLaunchArgument(
@@ -143,4 +158,5 @@ def generate_launch_description():
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyTHS1'),
 
         rsp, camera, aruco_tf, aruco_notf, esp32, ekf_odom, ekf_map,
+        teleop_gw, gui_bridge,
     ])

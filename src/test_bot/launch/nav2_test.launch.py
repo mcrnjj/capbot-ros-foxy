@@ -84,6 +84,16 @@ def generate_launch_description():
         name='waypoint_follower', output='screen', parameters=[nav2_params],
     )
 
+    # Puente WebSocket a la GUI (capbot-host): pose (TF map->base_link de fake_odom)
+    # + goals -> NavigateToPose + nav_status. Asi el mapa de la GUI muestra el
+    # robot moverse (estilo rviz2) y podes mandar goals desde la GUI.
+    gui_bridge = Node(
+        package='test_bot', executable='gui_bridge_node', name='gui_bridge_node',
+        output='screen',
+        parameters=[{'ws_port': 8766, 'map_frame': 'map',
+                     'base_frame': 'base_link', 'odom_frame': 'odom'}],
+    )
+
     lifecycle_localization = Node(
         package='nav2_lifecycle_manager', executable='lifecycle_manager',
         name='lifecycle_manager_localization', output='screen',
@@ -103,5 +113,6 @@ def generate_launch_description():
         DeclareLaunchArgument('map_name', default_value='small'),
         rsp, fake_odom, map_server,
         planner, controller, recoveries, bt_navigator, waypoint_follower,
+        gui_bridge,
         lifecycle_localization, lifecycle_navigation,
     ])
