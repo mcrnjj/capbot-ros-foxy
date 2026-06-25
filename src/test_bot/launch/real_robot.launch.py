@@ -160,7 +160,8 @@ def generate_launch_description():
         package='test_bot', executable='gui_bridge_node', name='gui_bridge_node',
         output='screen',
         parameters=[{'ws_port': 8766, 'map_frame': 'map',
-                     'base_frame': 'base_link', 'odom_frame': 'odom'}],
+                     'base_frame': 'base_link', 'odom_frame': 'odom',
+                     'map_name': map_name}],
         condition=IfCondition(enable_motion),
     )
 

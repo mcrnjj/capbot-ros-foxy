@@ -48,6 +48,11 @@ services:
       # Tunear config/mapas sin reconstruir la imagen.
       - ../src/test_bot/config:/ros_ws/install/test_bot/share/test_bot/config:ro
       - ../src/test_bot/maps:/ros_ws/install/test_bot/share/test_bot/maps:ro
+      # Scripts y launch: el build usa --symlink-install, por lo que los
+      # ejecutables instalados son symlinks a src/. Montar estas carpetas
+      # hace que los cambios en scripts/ y launch/ sean efectivos sin rebuild.
+      - ../src/test_bot/scripts:/ros_ws/src/test_bot/scripts:ro
+      - ../src/test_bot/launch:/ros_ws/src/test_bot/launch:ro
 
     # Si la camara CSI no abre con runtime+argus_socket, como ULTIMO recurso:
     # privileged: true

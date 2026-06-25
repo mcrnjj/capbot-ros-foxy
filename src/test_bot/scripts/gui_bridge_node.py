@@ -55,11 +55,13 @@ class GuiBridge(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("pose_rate", 10.0)
+        self.declare_parameter("map_name", "small")
         gp = self.get_parameter
         self.ws_port = int(gp("ws_port").value)
         self.map_frame = gp("map_frame").value
         self.base_frame = gp("base_frame").value
         self.odom_frame = gp("odom_frame").value
+        self.map_name = str(gp("map_name").value)
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -176,6 +178,11 @@ class GuiBridge(Node):
         asyncio.set_event_loop(loop)
 
         async def handler(ws, path=None):
+            # Announce the active map so the host can auto-select it
+            try:
+                await ws.send(json.dumps({"type": "map_name", "name": self.map_name}))
+            except Exception:
+                return
             sender = asyncio.ensure_future(self._ws_send(ws))
             try:
                 async for raw in ws:
