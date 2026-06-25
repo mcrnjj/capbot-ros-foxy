@@ -217,7 +217,7 @@ class ArucoLocalizer(Node):
             db = yaml.safe_load(f)
 
         dict_name = db.get("aruco_dict", "DICT_5X5_250")
-        self.marker_size = float(db.get("marker_size", 0.15))
+        self.marker_size = float(db.get("marker_size", 0.10))
         self.T_map_marker = {}
         for m in db["markers"]:
             T = np.eye(4)
