@@ -63,7 +63,7 @@ ekf_filter_node_map:
     # Pose inicial del robot en el frame map: esquina inferior-centro del laberinto
     # mirando al norte (yaw = pi/2). ArUco corregirá en cuanto vea un marcador.
     # Orden: x y z roll pitch yaw vx vy vz vroll vpitch vyaw ax ay az
-    initial_state: [0.0, -0.80, 0.0,
+    initial_state: [0.0, -0.90, 0.0,
                     0.0,  0.0,  1.5707963267948966,
                     0.0,  0.0,  0.0,
                     0.0,  0.0,  0.0,
