@@ -430,9 +430,9 @@ class ArucoLocalizer(Node):
         msg.pose.pose.orientation.z = float(q[2])
         msg.pose.pose.orientation.w = float(q[3])
         cov = list(msg.pose.covariance)
-        cov[0] = 0.05
-        cov[7] = 0.05
-        cov[35] = 0.10
+        cov[0] = 0.075
+        cov[7] = 0.075
+        cov[35] = 0.15
         msg.pose.covariance = cov
         self.pose_pub.publish(msg)
 
