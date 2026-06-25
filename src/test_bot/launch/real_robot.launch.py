@@ -1,23 +1,30 @@
 """
 real_robot.launch.py - bringup del robot REAL en la Jetson (ROS2 Foxy, Docker).
 
-FASE 2 (este archivo): localizacion + odometria + EKF
   - robot_state_publisher (robot_real.urdf.xacro, sin lidar/gazebo)
   - csi_camera_node       (camara CSI -> /camera/image_raw + video H264 a la GUI)
   - aruco_localizer       (-> /aruco_pose)
   - esp32_serial_bridge   (serie ESP32 -> /odom ; /cmd_vel -> VEL_CMD)
   - ekf x2 (robot_localization): local (odom->base_link) y global (map->odom)
+  - nav2 (map_server+planner+controller+recoveries+bt_navigator+waypoint_follower)
+  - teleop_gateway + gui_bridge_node (puentes hacia capbot-host)
 
 Flag enable_motion (default true):
-  - true  : Fase 2. Corren esp32_bridge + EKF; el TF lo dan los EKF
-            (aruco con publish_tf:=false).
-  - false : Fase 1 (camara-only, sin hardware). aruco publica TF map->base_link
-            directo y no se lanzan esp32_bridge ni EKF.
+  - true  : Corren esp32_bridge + EKF; el TF lo dan los EKF (aruco con
+            publish_tf:=false). Requerido para enable_nav (nav2 necesita
+            /odometry/filtered_odom y el TF map->odom->base_link de los EKF).
+  - false : Camara-only (sin hardware). aruco publica TF map->base_link
+            directo; no se lanzan esp32_bridge, EKF ni nav2.
 
-Fase 3 (se agrega aqui): nav2 + map_server + gui_bridge_node (flag enable_nav).
+Flag enable_nav (default true, requiere enable_motion:=true):
+  - true  : nav2 completo + map_server (config/test_map_<map_name>.yaml).
+            gui_bridge_node ya corre siempre con enable_motion; con nav2
+            arriba, navigate_to_pose queda disponible para los goals de la GUI.
+  - false : sin nav2 (ahorra CPU del Jetson durante teleop puro).
 
 Uso:
   ros2 launch test_bot real_robot.launch.py
+  ros2 launch test_bot real_robot.launch.py enable_nav:=false   # sin nav2
   ros2 launch test_bot real_robot.launch.py enable_motion:=false   # solo camara/aruco
   ros2 launch test_bot real_robot.launch.py map_name:=large serial_port:=/dev/ttyUSB0
   HOST_IP=192.168.1.10 ros2 launch test_bot real_robot.launch.py   # video a la GUI
@@ -27,7 +34,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 import xacro
 
@@ -38,10 +45,13 @@ def generate_launch_description():
     map_name = LaunchConfiguration('map_name')
     markers_db = LaunchConfiguration('markers_db')
     enable_motion = LaunchConfiguration('enable_motion')
+    enable_nav = LaunchConfiguration('enable_nav')
     serial_port = LaunchConfiguration('serial_port')
 
     camera_info = 'file://' + os.path.join(PKG, 'config', 'camera.yaml')
     ekf_params = os.path.join(PKG, 'config', 'ekf_real.yaml')
+    nav2_params = os.path.join(PKG, 'config', 'nav2_params.yaml')
+    map_yaml = [PKG, '/config/test_map_', map_name, '.yaml']
 
     xacro_file = os.path.join(PKG, 'description', 'robot_real.urdf.xacro')
     robot_description = xacro.process_file(xacro_file).toxml()
@@ -154,14 +164,71 @@ def generate_launch_description():
         condition=IfCondition(enable_motion),
     )
 
+    # ---- nav2 (Fase 3): mapa estatico, sin lidar (solo static_layer+inflation). ----
+    # nav2 requiere el TF map->odom->base_link y /odometry/filtered_odom de los
+    # EKF, asi que solo corre si enable_motion Y enable_nav son ambos true.
+    nav_enabled = PythonExpression(
+        ['"', enable_motion, '" == "true" and "', enable_nav, '" == "true"'])
+
+    map_server = Node(
+        package='nav2_map_server', executable='map_server', name='map_server',
+        output='screen',
+        parameters=[{'use_sim_time': False, 'yaml_filename': map_yaml}],
+        condition=IfCondition(nav_enabled),
+    )
+    planner = Node(
+        package='nav2_planner', executable='planner_server', name='planner_server',
+        output='screen', parameters=[nav2_params],
+        condition=IfCondition(nav_enabled),
+    )
+    controller = Node(
+        package='nav2_controller', executable='controller_server',
+        name='controller_server', output='screen', parameters=[nav2_params],
+        condition=IfCondition(nav_enabled),
+    )
+    recoveries = Node(
+        package='nav2_recoveries', executable='recoveries_server',
+        name='recoveries_server', output='screen', parameters=[nav2_params],
+        condition=IfCondition(nav_enabled),
+    )
+    bt_navigator = Node(
+        package='nav2_bt_navigator', executable='bt_navigator', name='bt_navigator',
+        output='screen', parameters=[nav2_params],
+        condition=IfCondition(nav_enabled),
+    )
+    waypoint_follower = Node(
+        package='nav2_waypoint_follower', executable='waypoint_follower',
+        name='waypoint_follower', output='screen', parameters=[nav2_params],
+        condition=IfCondition(nav_enabled),
+    )
+    lifecycle_localization = Node(
+        package='nav2_lifecycle_manager', executable='lifecycle_manager',
+        name='lifecycle_manager_localization', output='screen',
+        parameters=[{'use_sim_time': False, 'autostart': True,
+                     'node_names': ['map_server']}],
+        condition=IfCondition(nav_enabled),
+    )
+    lifecycle_navigation = Node(
+        package='nav2_lifecycle_manager', executable='lifecycle_manager',
+        name='lifecycle_manager_navigation', output='screen',
+        parameters=[{'use_sim_time': False, 'autostart': True,
+                     'node_names': ['planner_server', 'controller_server',
+                                    'recoveries_server', 'bt_navigator',
+                                    'waypoint_follower']}],
+        condition=IfCondition(nav_enabled),
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('map_name', default_value='small'),
         DeclareLaunchArgument(
             'markers_db',
             default_value=[PKG, '/config/markers_db_', map_name, '.yaml']),
         DeclareLaunchArgument('enable_motion', default_value='true'),
+        DeclareLaunchArgument('enable_nav', default_value='true'),
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyTHS1'),
 
         rsp, delayed_camera, aruco_tf, aruco_notf, esp32, ekf_odom, ekf_map,
         teleop_gw, gui_bridge,
+        map_server, planner, controller, recoveries, bt_navigator,
+        waypoint_follower, lifecycle_localization, lifecycle_navigation,
     ])

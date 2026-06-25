@@ -9,24 +9,28 @@ Protocolo (byte-compatible con capbot-jetson-bridge/protocol/cobs_frame.py):
   frame en el cable:  COBS( [type:1][len:1][payload:len][crc16:2] ) + 0x00
   CRC16-CCITT poly=0x1021 init=0xFFFF sobre [type+len+payload].
 
-MsgTypes (capbot-ESP32/include/Config.h):
+MsgTypes (capbot-ESP32/include/Config.h, branch nav2-integration):
   0x10 MOTOR_CMD   <hhh> (left,right,aux)   PWM crudo por rueda (modo MANUAL)
   0x11 BRAKE_ON    -                         freno activo
   0x12 HEARTBEAT   -                         para el watchdog del ESP32 (<200ms)
-  0x14 SETPOINT_COMP <BBf> (comp,res,val)    setpoint de posicion (modo AUTO)
-  0x15 MODE_CMD    <B> (0=manual,1=auto)
-  0x16 VEL_CMD     <ff> (v[m/s], w[deg/s])   *** NUEVO; firmware Fase 4 ***
+  0x14 SETPOINT_COMP <BBf> (comp,res,val)    setpoint de posicion (modo WAYPOINT)
+  0x15 MODE_CMD    <B> (0=manual,1=autonomous_nav,2=autonomous_waypoint)
+  0x16 VEL_CMD     <ff> (v[m/s], heading[rad absoluto])  modo AUTONOMOUS_NAV:
+       el eje lineal corre el PID de velocidad directo sobre v; el eje angular
+       NO es una velocidad, es un heading absoluto (mismo eje que odo.a) que
+       el firmware corre en cascada posicion->velocidad. nav2 publica /cmd_vel
+       como velocidad (angular.z rad/s), por eso este puente la integra sobre
+       el theta actual del ESP32 antes de mandarla (ver _on_cmd_vel).
   0x20 TELEMETRY   JSON UTF-8 (ESP32->Jetson)
   0x21 ESP_HELLO   -
 
 Funciones:
   - Lee TELEMETRY (JSON {mode,u,odo:{x,y,a,v,w},sp,error}) -> nav_msgs/Odometry
     en /odom. odo.a (theta) y odo.w (omega) vienen en GRADOS/grados-s -> rad.
-  - /cmd_vel (Twist) -> MODE_CMD(1) + VEL_CMD(v m/s, w deg/s).
-    OJO: el firmware actual aun NO maneja VEL_CMD (Fase 4); lo descarta de forma
-    segura (CRC valida, tipo desconocido ignorado). Inerte hasta el cambio.
+  - /cmd_vel (Twist) -> MODE_CMD(1) + VEL_CMD(v m/s, heading rad). heading se
+    integra como theta_actual + angular.z*dt (dt medido entre llamadas).
   - /esp32/motor_cmd (Int16MultiArray [left,right]) -> MODE_CMD(0) + MOTOR_CMD
-    (teleop manual; lo alimenta teleop_gateway/cmd_mux).
+    (teleop manual; lo alimenta teleop_gateway).
   - /esp32/estop (Bool True) -> BRAKE_ON.
   - HEARTBEAT cada 50ms; BRAKE al cerrar; watchdog de /cmd_vel (frena si se corta).
 
@@ -212,7 +216,8 @@ class Esp32SerialBridge(Node):
 
         # Estado
         self._mode = None            # None/0/1 para no spamear MODE_CMD
-        self._last_cmd_vel_t = 0.0
+        self._theta_rad = 0.0        # ultimo theta de odometria (de TELEMETRY)
+        self._last_cmd_vel_t = None  # timestamp (s) de la ultima /cmd_vel recibida
         self._cmd_vel_active = False
         self._ser = None
         self._write_lock = threading.Lock()
@@ -234,8 +239,8 @@ class Esp32SerialBridge(Node):
         self.create_timer(0.1, self._check_cmd_vel_timeout)
 
         self.get_logger().info(
-            "esp32_serial_bridge listo en %s @ %d. /cmd_vel->VEL_CMD (v m/s, w deg/s; "
-            "INERTE hasta firmware Fase 4), /esp32/motor_cmd->MOTOR_CMD (manual)."
+            "esp32_serial_bridge listo en %s @ %d. /cmd_vel->VEL_CMD (v m/s, "
+            "heading rad), /esp32/motor_cmd->MOTOR_CMD (manual)."
             % (self.port, self.baud))
 
     # ----------------------- serie -----------------------
@@ -304,6 +309,7 @@ class Esp32SerialBridge(Node):
             w = float(odo["w"]) * DEG2RAD          # grados/s -> rad/s
         except (KeyError, TypeError, ValueError):
             return
+        self._theta_rad = theta  # usado por _on_cmd_vel para integrar heading
 
         stamp = self.get_clock().now().to_msg()
         qx, qy, qz, qw = yaw_to_quat(theta)
@@ -348,13 +354,27 @@ class Esp32SerialBridge(Node):
             self._write(pack_frame(MODE_CMD, struct.pack("<B", mode & 0xFF)))
 
     def _on_cmd_vel(self, msg):
-        self._last_cmd_vel_t = self.get_clock().now().nanoseconds * 1e-9
+        now = self.get_clock().now().nanoseconds * 1e-9
+        # dt entre /cmd_vel sucesivas (nav2 publica a controller_frequency,
+        # 10Hz -> ~0.1s). En la primera llamada (o tras un hueco largo) no hay
+        # base valida: dt=0 deja el heading en el theta actual, sin salto.
+        if self._last_cmd_vel_t is None or (now - self._last_cmd_vel_t) > 0.5:
+            dt = 0.0
+        else:
+            dt = now - self._last_cmd_vel_t
+        self._last_cmd_vel_t = now
         self._cmd_vel_active = True
-        self._set_mode(1)  # autonomo
+        self._set_mode(1)  # autonomous_nav
+
         v = max(-self.max_lin, min(self.max_lin, msg.linear.x))
         w_rad = max(-self.max_ang, min(self.max_ang, msg.angular.z))
-        w_deg = w_rad * RAD2DEG           # firmware espera deg/s
-        self._write(pack_frame(VEL_CMD, struct.pack("<ff", v, w_deg)))
+        # El firmware NO espera una velocidad angular: VEL_CMD.angular es un
+        # heading absoluto en radianes (cascada posicion->velocidad on-board).
+        # nav2 manda velocidad (angular.z), asi que la integramos sobre el
+        # theta actual del ESP32 para obtener el heading objetivo.
+        heading = self._theta_rad + w_rad * dt
+        heading = math.atan2(math.sin(heading), math.cos(heading))  # wrap +-pi
+        self._write(pack_frame(VEL_CMD, struct.pack("<ff", v, heading)))
 
     def _on_motor_cmd(self, msg):
         if len(msg.data) < 2:
@@ -390,13 +410,17 @@ class Esp32SerialBridge(Node):
         self._set_mode(int(msg.data) & 0x01)
 
     def _check_cmd_vel_timeout(self):
-        if not self._cmd_vel_active:
+        if not self._cmd_vel_active or self._last_cmd_vel_t is None:
             return
         now = self.get_clock().now().nanoseconds * 1e-9
         if (now - self._last_cmd_vel_t) > self.cmd_vel_timeout:
             self._cmd_vel_active = False
-            self._write(pack_frame(VEL_CMD, struct.pack("<ff", 0.0, 0.0)))
-            self.get_logger().warn("Sin /cmd_vel; frenando (VEL_CMD 0,0).")
+            # heading = theta actual (no 0.0 absoluto): si mandaramos 0.0 el
+            # robot giraria para mirar el rumbo "cero" del mundo en vez de
+            # simplemente quedarse quieto. El firmware ya frena solo si VEL_CMD
+            # queda viejo (NAV_VEL_TIMEOUT_MS); esto es defensa adicional.
+            self._write(pack_frame(VEL_CMD, struct.pack("<ff", 0.0, self._theta_rad)))
+            self.get_logger().warn("Sin /cmd_vel; frenando (VEL_CMD 0, heading actual).")
 
     def _send_heartbeat(self):
         self._write(pack_frame(HEARTBEAT))
