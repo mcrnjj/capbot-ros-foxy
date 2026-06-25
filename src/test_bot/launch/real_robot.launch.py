@@ -71,7 +71,7 @@ def generate_launch_description():
     )
 
     delayed_camera = TimerAction(
-        period=30.0,
+        period=15.0,
         actions=[camera]
     )
 
