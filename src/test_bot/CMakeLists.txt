@@ -47,6 +47,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME gui_bridge_node
 )
+install(PROGRAMS
+  scripts/object_detector.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME object_detector
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

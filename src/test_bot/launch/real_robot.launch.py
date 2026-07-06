@@ -63,6 +63,27 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description, 'use_sim_time': False}],
     )
 
+    enable_detector = LaunchConfiguration('enable_detector')
+
+    detector = Node(
+        package='test_bot', executable='object_detector',
+        name='object_detector', output='screen',
+        parameters=[{
+            'network': 'ssd-mobilenet-v2',
+            'threshold': 0.5,
+            'image_topic': '/camera/image_raw',
+            'camera_info_topic': '/camera/camera_info',
+            'camera_frame': 'camera_link_optical',
+            'base_frame': 'base_link',
+            'ground_z': -0.035,          # piso en base_link; verificar con tf2_echo
+            'max_distance': 2.0,         # camara horizontal y baja: >2 m no es fiable
+            'class_filter': [''],        # vacio = todas las clases COCO
+            'publish_cloud': True,
+            'publish_json': True,
+        }],
+        condition=IfCondition(enable_detector),
+    )
+
     camera = Node(
         package='test_bot', executable='csi_camera_node',
         name='csi_camera_node', output='screen',
@@ -227,9 +248,9 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_motion', default_value='true'),
         DeclareLaunchArgument('enable_nav', default_value='true'),
         DeclareLaunchArgument('serial_port', default_value='/dev/ttyTHS1'),
-
+        DeclareLaunchArgument('enable_detector', default_value='true'),
         rsp, delayed_camera, aruco_tf, aruco_notf, esp32, ekf_odom, ekf_map,
         teleop_gw, gui_bridge,
         map_server, planner, controller, recoveries, bt_navigator,
-        waypoint_follower, lifecycle_localization, lifecycle_navigation,
+        waypoint_follower, lifecycle_localization, lifecycle_navigation, detector,
     ])

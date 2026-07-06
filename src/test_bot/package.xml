@@ -38,8 +38,9 @@
   <exec_depend>action_msgs</exec_depend>
 
   <!-- NO van por rosdep (se instalan en docker/Dockerfile):
-       opencv-contrib-python (cv2.aruco), numpy, scipy, python3-gi/GStreamer,
-       websockets<10 (Python 3.6 del contenedor). -->
+     opencv-contrib-python (cv2.aruco), numpy, scipy, python3-gi/GStreamer,
+     websockets<10 (Python 3.6 del contenedor),
+     jetson-inference/jetson-utils (detectNet, compilado en 4b del Dockerfile). -->
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

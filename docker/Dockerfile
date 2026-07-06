@@ -155,6 +155,29 @@ RUN set -e; \
     rm -rf /var/lib/apt/lists/*
 
 # -----------------------------------------------------------------------------
+# 4b) jetson-inference (detectNet / TensorRT) — deteccion de obstaculos en GPU
+#     Requiere "default-runtime": "nvidia" en /etc/docker/daemon.json del host
+#     (CUDA visible en build). BUILD_INTERACTIVE=NO descarga los modelos por
+#     defecto (incluye SSD-Mobilenet-v2) sin el menu interactivo.
+# -----------------------------------------------------------------------------
+ENV JI_DIR=/opt/jetson-inference
+RUN set -e; \
+    apt-get update && apt-get install -y --no-install-recommends \
+        cmake libpython3-dev python3-numpy; \
+    git clone --recursive https://github.com/dusty-nv/jetson-inference ${JI_DIR}; \
+    cd ${JI_DIR} && mkdir build && cd build; \
+    cmake -DBUILD_INTERACTIVE=NO ../; \
+    make -j2 && make install && ldconfig; \
+    rm -rf ${JI_DIR}/build /var/lib/apt/lists/*
+
+# Pre-construir el engine de TensorRT EN LA IMAGEN (evita los ~3-5 min de la
+# primera corrida y que el .engine se pierda al recrear el contenedor).
+# Tolerante a fallo: si no hay GPU en build, se genera en el primer arranque.
+RUN python3 -c "from jetson_inference import detectNet; detectNet('ssd-mobilenet-v2', threshold=0.5)" \
+    || python3 -c "from jetson.inference import detectNet; detectNet('ssd-mobilenet-v2', threshold=0.5)" \
+    || echo "WARN: engine TensorRT no pre-generado; se construira en el primer arranque"
+
+# -----------------------------------------------------------------------------
 # 5) Workspace del paquete test_bot. Contexto de build = RAIZ del repo.
 # -----------------------------------------------------------------------------
 ENV WS=/ros_ws
