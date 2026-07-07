@@ -165,7 +165,10 @@ RUN set -e; \
     apt-get update && apt-get install -y --no-install-recommends \
         cmake libpython3-dev python3-numpy; \
     git clone --recursive https://github.com/dusty-nv/jetson-inference ${JI_DIR}; \
-    cd ${JI_DIR} && mkdir build && cd build; \
+    cd ${JI_DIR}; \
+    git checkout $(git rev-list -n 1 --before="2022-09-01" HEAD); \
+    git submodule update --init --recursive; \
+    mkdir build && cd build; \
     cmake -DBUILD_INTERACTIVE=NO ../; \
     make -j2 && make install && ldconfig; \
     rm -rf ${JI_DIR}/build /var/lib/apt/lists/*
