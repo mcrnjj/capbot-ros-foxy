@@ -73,7 +73,7 @@ def build_pipeline(sid, cw, ch, ow, oh, fps, flip, enable_video,
     video_branch = (
         "nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! "
         "nvv4l2h264enc insert-sps-pps=true iframeinterval=15 idrinterval=15 "
-        "maxperf-enable=1 preset-level=1 bitrate={br} control-rate=1 ! "
+        "maxperf-enable=0 preset-level=1 bitrate={br} control-rate=1 ! "
         "h264parse config-interval=1 ! "
         "rtph264pay pt=96 config-interval=1 mtu=1400 ! "
         "udpsink host={host} port={port} sync=false async=false"
