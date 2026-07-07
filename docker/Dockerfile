@@ -178,6 +178,14 @@ RUN set -e; \
     make -j2 && make install && ldconfig; \
     rm -rf ${JI_DIR}/build /var/lib/apt/lists/*
 
+# Modelo SSD-Mobilenet-v2 (el download de CMakePreBuild fallo: links de Box caidos)
+RUN set -e; \
+    mkdir -p ${JI_DIR}/data/networks && cd ${JI_DIR}/data/networks; \
+    wget --no-check-certificate -O SSD-Mobilenet-v2.tar.gz \
+        https://nvidia.box.com/shared/static/jcdewxep8vamzm71zajcovza938lygre.gz; \
+    tar -xzf SSD-Mobilenet-v2.tar.gz && rm SSD-Mobilenet-v2.tar.gz; \
+    ls SSD-Mobilenet-v2/ssd_mobilenet_v2_coco.uff   # falla el build si no quedo bien
+
 # Pre-construir el engine de TensorRT EN LA IMAGEN (evita los ~3-5 min de la
 # primera corrida y que el .engine se pierda al recrear el contenedor).
 # Tolerante a fallo: si no hay GPU en build, se genera en el primer arranque.
