@@ -168,6 +168,11 @@ RUN set -e; \
     cd ${JI_DIR}; \
     git checkout $(git rev-list -n 1 --before="2022-09-01" HEAD); \
     git submodule update --init --recursive; \
+    # TRT 8.x ya no trae libnvcaffe_parser: symlink de compatibilidad a libnvparsers
+    TRT_LIB=/usr/lib/aarch64-linux-gnu; \
+    if [ ! -e ${TRT_LIB}/libnvcaffe_parser.so ]; then \
+        ln -sf $(ls ${TRT_LIB}/libnvparsers.so* | head -n1) ${TRT_LIB}/libnvcaffe_parser.so; \
+    fi; \
     mkdir build && cd build; \
     cmake -DBUILD_INTERACTIVE=NO ../; \
     make -j2 && make install && ldconfig; \
