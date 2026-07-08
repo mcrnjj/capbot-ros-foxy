@@ -174,14 +174,16 @@ class TeleopGateway(Node):
         asyncio.set_event_loop(loop)
 
         async def handler(ws, path=None):
-            last = None
             try:
                 while self._running:
                     with self._telem_lock:
                         cur = self._latest_telem
-                    if cur is not None and cur != last:
+                    # Mandar siempre (no solo cuando cambia): con el robot
+                    # quieto el JSON de telemetria puede quedar identico
+                    # frame a frame (v/w en 0), y el host marca la
+                    # telemetria como obsoleta si no le llega nada nuevo.
+                    if cur is not None:
                         await ws.send(cur)
-                        last = cur
                     await asyncio.sleep(0.05)   # 20 Hz
             except Exception:
                 pass
