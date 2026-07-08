@@ -16,7 +16,6 @@ MsgTypes UDP (capbot-host/protocol/udp_frame.py):
   0x02 CMD_HEARTBEAT                       -> keepalive (solo ACK)
   0x03 CMD_EMERGENCY                       -> /esp32/estop (True)
   0x04 CMD_PID_PARAM <BBf> ctrl,param,val  -> /esp32/pid_param  (modo PID)
-  0x05 CMD_SETPOINT  <BBf> comp,_,val      -> /esp32/setpoint
   0x06 CMD_MODE      <B>  mode             -> /esp32/mode (0=manual,1=auto)
   0x81 ACK (lo enviamos nosotros)
 
@@ -50,7 +49,6 @@ CMD_MOTOR = 0x01
 CMD_HEARTBEAT = 0x02
 CMD_EMERGENCY = 0x03
 CMD_PID_PARAM = 0x04
-CMD_SETPOINT_COMP = 0x05
 CMD_MODE = 0x06
 ACK = 0x81
 
@@ -101,7 +99,6 @@ class TeleopGateway(Node):
         self.motor_pub = self.create_publisher(Int16MultiArray, "/esp32/motor_cmd", 10)
         self.estop_pub = self.create_publisher(Bool, "/esp32/estop", 10)
         self.pid_pub = self.create_publisher(Float32MultiArray, "/esp32/pid_param", 10)
-        self.setpoint_pub = self.create_publisher(Float32MultiArray, "/esp32/setpoint", 10)
         self.mode_pub = self.create_publisher(Int8, "/esp32/mode", 10)
 
         # Telemetria -> WS
@@ -166,11 +163,6 @@ class TeleopGateway(Node):
             f = Float32MultiArray()
             f.data = [float(ctrl), float(param), float(val)]
             self.pid_pub.publish(f)
-        elif mtype == CMD_SETPOINT_COMP:
-            comp, _res, val = struct.unpack("<BBf", payload)
-            f = Float32MultiArray()
-            f.data = [float(comp), float(val)]
-            self.setpoint_pub.publish(f)
         elif mtype == CMD_MODE:
             self.mode_pub.publish(Int8(data=int(payload[0])))
         elif mtype == CMD_HEARTBEAT:

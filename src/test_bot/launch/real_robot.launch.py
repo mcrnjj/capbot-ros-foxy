@@ -126,7 +126,6 @@ def generate_launch_description():
             'baudrate': 115200,
             'odom_frame': 'odom',
             'base_frame': 'base_link',
-            'publish_odom_tf': False,   # el EKF local da odom->base_link
             'max_linear_speed': 0.6,    # m/s; ajustar a la velocidad real
             'max_angular_speed': 3.0,   # rad/s; idem
             'cmd_vel_timeout': 0.5,

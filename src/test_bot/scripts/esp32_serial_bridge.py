@@ -9,32 +9,34 @@ Protocolo (byte-compatible con capbot-jetson-bridge/protocol/cobs_frame.py):
   frame en el cable:  COBS( [type:1][len:1][payload:len][crc16:2] ) + 0x00
   CRC16-CCITT poly=0x1021 init=0xFFFF sobre [type+len+payload].
 
-MsgTypes (capbot-ESP32/include/Config.h, branch nav2-integration):
+MsgTypes (capbot-ESP32/include/Config.h):
   0x10 MOTOR_CMD   <hhh> (left,right,aux)   PWM crudo por rueda (modo MANUAL)
   0x11 BRAKE_ON    -                         freno activo
   0x12 HEARTBEAT   -                         para el watchdog del ESP32 (<200ms)
-  0x14 SETPOINT_COMP <BBf> (comp,res,val)    setpoint de posicion (modo WAYPOINT)
-  0x15 MODE_CMD    <B> (0=manual,1=autonomous_nav,2=autonomous_waypoint)
-  0x16 VEL_CMD     <ff> (v[m/s], heading[rad absoluto])  modo AUTONOMOUS_NAV:
-       el eje lineal corre el PID de velocidad directo sobre v; el eje angular
-       NO es una velocidad, es un heading absoluto (mismo eje que odo.a) que
-       el firmware corre en cascada posicion->velocidad. nav2 publica /cmd_vel
-       como velocidad (angular.z rad/s), por eso este puente la integra sobre
-       el theta actual del ESP32 antes de mandarla (ver _on_cmd_vel).
+  0x15 MODE_CMD    <B> (0=manual,1=autonomous_nav)
+  0x16 VEL_CMD     <ff> (v[m/s], w[rad/s])  modo AUTONOMOUS_NAV: setpoint de
+       velocidad lineal y angular de nav2 /cmd_vel; el PID de velocidad
+       on-board del ESP32 cierra el lazo contra odometria de ruedas.
   0x20 TELEMETRY   JSON UTF-8 (ESP32->Jetson)
   0x21 ESP_HELLO   -
 
 Funciones:
-  - Lee TELEMETRY (JSON {mode,u,odo:{x,y,a,v,w},sp,error}) -> nav_msgs/Odometry
-    en /odom. odo.a (theta) y odo.w (omega) vienen en GRADOS/grados-s -> rad.
-  - /cmd_vel (Twist) -> MODE_CMD(1) + VEL_CMD(v m/s, heading rad). heading se
-    integra como theta_actual + angular.z*dt (dt medido entre llamadas).
+  - Lee TELEMETRY (JSON {mode,u,odo:{v,w},sp,tof}) -> nav_msgs/Odometry en
+    /odom. odo.v/odo.w son velocidad lineal/angular CRUDAS de cinematica de
+    ruedas (sin IMU, sin fusion ni filtrado on-board); odo.w viene en
+    grados/s -> rad. El ESP32 NO manda pose (x,y,theta): la integracion de
+    posicion queda del lado del EKF (robot_localization), que ya solo
+    consume velocidades de /odom (ver ekf_real.yaml).
+  - /cmd_vel (Twist) -> MODE_CMD(1) + VEL_CMD(v m/s, angular.z rad/s), tal
+    cual (sin heuristica de heading: el firmware espera una velocidad
+    angular, no una posicion).
   - /esp32/motor_cmd (Int16MultiArray [left,right]) -> MODE_CMD(0) + MOTOR_CMD
     (teleop manual; lo alimenta teleop_gateway).
   - /esp32/estop (Bool True) -> BRAKE_ON.
   - HEARTBEAT cada 50ms; BRAKE al cerrar; watchdog de /cmd_vel (frena si se corta).
 
-El EKF publica el TF odom->base_link, asi que aca publish_odom_tf=false por defecto.
+El EKF publica el TF odom->base_link (y map->odom); este puente no publica
+TF porque no tiene pose propia que ofrecer.
 """
 
 import math
@@ -45,10 +47,9 @@ import time
 import rclpy
 from rclpy.node import Node
 
-from geometry_msgs.msg import Twist, TransformStamped
+from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, Int8, Int16MultiArray, Float32MultiArray, String
-from tf2_ros import TransformBroadcaster
 
 try:
     import serial
@@ -65,7 +66,6 @@ MOTOR_CMD = 0x10
 BRAKE_ON = 0x11
 HEARTBEAT = 0x12
 PID_PARAM = 0x13
-SETPOINT_COMP = 0x14
 MODE_CMD = 0x15
 VEL_CMD = 0x16
 TELEMETRY = 0x20
@@ -170,11 +170,6 @@ class FrameBuffer:
 
 # --------------------------------------------------------------------------
 DEG2RAD = math.pi / 180.0
-RAD2DEG = 180.0 / math.pi
-
-
-def yaw_to_quat(yaw):
-    return (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
 
 
 class Esp32SerialBridge(Node):
@@ -185,7 +180,6 @@ class Esp32SerialBridge(Node):
         self.declare_parameter("baudrate", 115200)
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_link")
-        self.declare_parameter("publish_odom_tf", False)  # el EKF da odom->base_link
         self.declare_parameter("max_linear_speed", 0.3)   # m/s, clamp /cmd_vel
         self.declare_parameter("max_angular_speed", 2.0)  # rad/s, clamp /cmd_vel
         self.declare_parameter("cmd_vel_timeout", 0.5)    # s, frena si se corta
@@ -196,27 +190,23 @@ class Esp32SerialBridge(Node):
         self.baud = gp("baudrate").value
         self.odom_frame = gp("odom_frame").value
         self.base_frame = gp("base_frame").value
-        self.publish_tf = bool(gp("publish_odom_tf").value)
         self.max_lin = float(gp("max_linear_speed").value)
         self.max_ang = float(gp("max_angular_speed").value)
         self.cmd_vel_timeout = float(gp("cmd_vel_timeout").value)
 
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
         self.telem_pub = self.create_publisher(String, "/esp32/telemetry", 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
 
         self.create_subscription(Twist, "/cmd_vel", self._on_cmd_vel, 10)
         self.create_subscription(Int16MultiArray, "/esp32/motor_cmd", self._on_motor_cmd, 10)
         self.create_subscription(Bool, "/esp32/estop", self._on_estop, 10)
-        # PID (0x13), setpoint (0x14) y modo (0x15): los alimenta teleop_gateway
-        # desde la GUI (modo PID / control). data como Float32MultiArray.
+        # PID (0x13) y modo (0x15): los alimenta teleop_gateway desde la GUI
+        # (modo PID / control). data como Float32MultiArray.
         self.create_subscription(Float32MultiArray, "/esp32/pid_param", self._on_pid_param, 10)
-        self.create_subscription(Float32MultiArray, "/esp32/setpoint", self._on_setpoint, 10)
         self.create_subscription(Int8, "/esp32/mode", self._on_mode_cmd, 10)
 
         # Estado
         self._mode = None            # None/0/1 para no spamear MODE_CMD
-        self._theta_rad = 0.0        # ultimo theta de odometria (de TELEMETRY)
         self._last_cmd_vel_t = None  # timestamp (s) de la ultima /cmd_vel recibida
         self._cmd_vel_active = False
         self._ser = None
@@ -240,7 +230,7 @@ class Esp32SerialBridge(Node):
 
         self.get_logger().info(
             "esp32_serial_bridge listo en %s @ %d. /cmd_vel->VEL_CMD (v m/s, "
-            "heading rad), /esp32/motor_cmd->MOTOR_CMD (manual)."
+            "w rad/s), /esp32/motor_cmd->MOTOR_CMD (manual)."
             % (self.port, self.baud))
 
     # ----------------------- serie -----------------------
@@ -303,49 +293,32 @@ class Esp32SerialBridge(Node):
         if not isinstance(odo, dict):
             return
         try:
-            x = float(odo["x"]); y = float(odo["y"])
-            theta = float(odo["a"]) * DEG2RAD     # grados -> rad
             v = float(odo["v"])
-            w = float(odo["w"]) * DEG2RAD          # grados/s -> rad/s
+            w = float(odo["w"]) * DEG2RAD  # grados/s -> rad/s
         except (KeyError, TypeError, ValueError):
             return
-        self._theta_rad = theta  # usado por _on_cmd_vel para integrar heading
 
         stamp = self.get_clock().now().to_msg()
-        qx, qy, qz, qw = yaw_to_quat(theta)
 
         msg = Odometry()
         msg.header.stamp = stamp
         msg.header.frame_id = self.odom_frame
         msg.child_frame_id = self.base_frame
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
-        msg.pose.pose.orientation.x = qx
-        msg.pose.pose.orientation.y = qy
-        msg.pose.pose.orientation.z = qz
-        msg.pose.pose.orientation.w = qw
+        # Sin pose propia: el ESP32 ya no integra x/y/theta (eso lo hace el
+        # EKF a partir de estas velocidades). Orientacion identidad + huge
+        # covariance en pose para que quede claro que no es una medicion.
+        msg.pose.pose.orientation.w = 1.0
+        msg.pose.covariance[0] = 1e6
+        msg.pose.covariance[7] = 1e6
+        msg.pose.covariance[35] = 1e6
         msg.twist.twist.linear.x = v
         msg.twist.twist.angular.z = w
-        # Covarianzas (el EKF usa sobre todo el twist; la pose la corrige ArUco).
+        # Covarianzas del twist (unico dato que usa el EKF, ver ekf_real.yaml).
+        # vyaw sube respecto a la version con IMU: omega ahora es cinematica
+        # de ruedas cruda, sin el suavizado del giroscopio.
         msg.twist.covariance[0] = 0.02     # vx
-        msg.twist.covariance[35] = 0.04    # vyaw
-        msg.pose.covariance[0] = 0.05
-        msg.pose.covariance[7] = 0.05
-        msg.pose.covariance[35] = 0.10
+        msg.twist.covariance[35] = 0.12    # vyaw
         self.odom_pub.publish(msg)
-
-        if self.publish_tf:
-            tf = TransformStamped()
-            tf.header.stamp = stamp
-            tf.header.frame_id = self.odom_frame
-            tf.child_frame_id = self.base_frame
-            tf.transform.translation.x = x
-            tf.transform.translation.y = y
-            tf.transform.rotation.x = qx
-            tf.transform.rotation.y = qy
-            tf.transform.rotation.z = qz
-            tf.transform.rotation.w = qw
-            self.tf_broadcaster.sendTransform(tf)
 
     # ----------------------- comandos -----------------------
     def _set_mode(self, mode):
@@ -354,27 +327,13 @@ class Esp32SerialBridge(Node):
             self._write(pack_frame(MODE_CMD, struct.pack("<B", mode & 0xFF)))
 
     def _on_cmd_vel(self, msg):
-        now = self.get_clock().now().nanoseconds * 1e-9
-        # dt entre /cmd_vel sucesivas (nav2 publica a controller_frequency,
-        # 10Hz -> ~0.1s). En la primera llamada (o tras un hueco largo) no hay
-        # base valida: dt=0 deja el heading en el theta actual, sin salto.
-        if self._last_cmd_vel_t is None or (now - self._last_cmd_vel_t) > 0.5:
-            dt = 0.0
-        else:
-            dt = now - self._last_cmd_vel_t
-        self._last_cmd_vel_t = now
+        self._last_cmd_vel_t = self.get_clock().now().nanoseconds * 1e-9
         self._cmd_vel_active = True
         self._set_mode(1)  # autonomous_nav
 
         v = max(-self.max_lin, min(self.max_lin, msg.linear.x))
         w_rad = max(-self.max_ang, min(self.max_ang, msg.angular.z))
-        # El firmware NO espera una velocidad angular: VEL_CMD.angular es un
-        # heading absoluto en radianes (cascada posicion->velocidad on-board).
-        # nav2 manda velocidad (angular.z), asi que la integramos sobre el
-        # theta actual del ESP32 para obtener el heading objetivo.
-        heading = self._theta_rad + w_rad * dt
-        heading = math.atan2(math.sin(heading), math.cos(heading))  # wrap +-pi
-        self._write(pack_frame(VEL_CMD, struct.pack("<ff", v, heading)))
+        self._write(pack_frame(VEL_CMD, struct.pack("<ff", v, w_rad)))
 
     def _on_motor_cmd(self, msg):
         if len(msg.data) < 2:
@@ -398,14 +357,6 @@ class Esp32SerialBridge(Node):
         value = float(msg.data[2])
         self._write(pack_frame(PID_PARAM, struct.pack("<BBf", ctrl, param, value)))
 
-    def _on_setpoint(self, msg):
-        # [comp_id, value] -> SETPOINT_COMP 0x14 <BBf>.
-        if len(msg.data) < 2:
-            return
-        comp = int(msg.data[0]) & 0xFF
-        value = float(msg.data[1])
-        self._write(pack_frame(SETPOINT_COMP, struct.pack("<BBf", comp, 0, value)))
-
     def _on_mode_cmd(self, msg):
         self._set_mode(int(msg.data) & 0x01)
 
@@ -415,12 +366,10 @@ class Esp32SerialBridge(Node):
         now = self.get_clock().now().nanoseconds * 1e-9
         if (now - self._last_cmd_vel_t) > self.cmd_vel_timeout:
             self._cmd_vel_active = False
-            # heading = theta actual (no 0.0 absoluto): si mandaramos 0.0 el
-            # robot giraria para mirar el rumbo "cero" del mundo en vez de
-            # simplemente quedarse quieto. El firmware ya frena solo si VEL_CMD
-            # queda viejo (NAV_VEL_TIMEOUT_MS); esto es defensa adicional.
-            self._write(pack_frame(VEL_CMD, struct.pack("<ff", 0.0, self._theta_rad)))
-            self.get_logger().warn("Sin /cmd_vel; frenando (VEL_CMD 0, heading actual).")
+            # El firmware ya frena solo si VEL_CMD queda viejo
+            # (NAV_VEL_TIMEOUT_MS); esto es defensa adicional.
+            self._write(pack_frame(VEL_CMD, struct.pack("<ff", 0.0, 0.0)))
+            self.get_logger().warn("Sin /cmd_vel; frenando (VEL_CMD 0).")
 
     def _send_heartbeat(self):
         self._write(pack_frame(HEARTBEAT))

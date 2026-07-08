@@ -1,3 +1,7 @@
+### EKF para simulacion (Gazebo). robot_localization, ROS2 Foxy.
+# Sin IMU (descartada del proyecto): solo odom0 (velocidades de ruedas) +
+# pose0 (ArUco) en el filtro global. Ver ekf_real.yaml para el robot real.
+
 ### EKF LOCAL (odom -> base_link)
 ekf_filter_node_odom:
   ros__parameters:
@@ -21,18 +25,6 @@ ekf_filter_node_odom:
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 5
-
-    imu0: /imu/data
-    # IMU: yaw rate + acceleraciones lineales horizontales (ax, ay).
-    # Su ruido es bajo (sigma ~0.01 m/s2) asi que aportan mucho.
-    imu0_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, true,
-                  true,  true,  false]
-    imu0_differential: false
-    imu0_relative: false
-    imu0_queue_size: 5
 
 
 ### EKF GLOBAL (map -> odom)
@@ -63,16 +55,6 @@ ekf_filter_node_map:
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 5
-
-    imu0: /imu/data
-    imu0_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, true,
-                  true,  true,  false]
-    imu0_differential: false
-    imu0_relative: false
-    imu0_queue_size: 5
 
     pose0: /aruco_pose
     pose0_config: [true,  true,  false,

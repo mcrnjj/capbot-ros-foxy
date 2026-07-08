@@ -8,7 +8,9 @@
     Solo trae los frames que la pila real necesita:
       - robot_core.xacro : base_link, base_footprint, chassis, ruedas, caster
       - camera.xacro     : camera_link + camera_link_optical (frame de ArUco)
-      - imu.xacro         : imu_link (frame; la IMU fisica vive en el ESP32)
+
+    Sin IMU: el robot no tiene (ni usa) IMU física; la odometría es solo de
+    ruedas.
 
     Los bloques <gazebo> dentro de esos xacro son inertes fuera de Gazebo
     (robot_state_publisher los ignora). La cadena base_link -> camera_link_optical
@@ -24,6 +26,5 @@
 
     <xacro:include filename="robot_core.xacro" />
     <xacro:include filename="camera.xacro" />
-    <xacro:include filename="imu.xacro" />
 
 </robot>

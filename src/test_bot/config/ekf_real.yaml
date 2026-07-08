@@ -2,9 +2,15 @@
 #
 # Diferencias respecto al ekf.yaml de sim:
 #   - use_sim_time: false (robot real).
-#   - SIN imu0: el ESP32 transmite odometria YA fusionada (no IMU cruda).
+#   - SIN imu0: no hay IMU en el robot (descartada). El ESP32 manda v/omega
+#     CRUDOS de cinematica de ruedas (sin fusion, sin filtrado on-board); el
+#     filtro es quien integra pose y suaviza a partir de esas velocidades.
 #   - odom0 = /odom (de esp32_serial_bridge): usamos VELOCIDADES (vx, vyaw).
 #     La pose absoluta la corrige /aruco_pose en el filtro de map.
+#   - vyaw ahora es mas ruidoso que cuando habia asistencia de giroscopio: la
+#     covarianza de /odom (twist.covariance en esp32_serial_bridge.py) subio
+#     para reflejarlo, asi el filtro le da menos peso y sensor_timeout sigue
+#     prediciendo con el modelo de movimiento en los huecos.
 #
 # Patron dual-EKF:
 #   - ekf_filter_node_odom : world_frame=odom -> publica TF odom->base_link.
