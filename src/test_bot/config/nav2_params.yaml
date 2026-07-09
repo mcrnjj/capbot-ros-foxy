@@ -44,7 +44,11 @@ planner_server:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    controller_frequency: 5.0
+    # 20 Hz para seguimiento mas preciso. Sube el costo fijo por ciclo
+    # (costmap/TF/critic setup) 4x respecto a 5 Hz; ver vx/vtheta_samples
+    # abajo para compensar el costo de simulacion de trayectorias. Monitorear
+    # tegrastats: si satura CPU, primera palanca es volver a 10-15 Hz.
+    controller_frequency: 20.0
     odom_topic: /odometry/filtered_odom
     min_x_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
@@ -59,7 +63,12 @@ controller_server:
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.08
+      # 0.08 -> 0.04: mas precision de llegada. No bajar mucho mas sin medir:
+      # la localizacion viene de ArUco (marcadores esparcidos, no vision
+      # continua) + EKF, con ruido de varios cm; un tolerance menor que el
+      # ruido de localizacion hace que el goal_checker nunca declare "llegado"
+      # y el robot oscile sin parar.
+      xy_goal_tolerance: 0.04
       yaw_goal_tolerance: 0.30
       stateful: true
 
@@ -81,16 +90,20 @@ controller_server:
       decel_lim_y: 0.0
       decel_lim_theta: -1.5
       # --- Presupuesto de CPU del DWB (lo mas caro del stack en el Nano) ---
-      # El planner local simula vx_samples * vtheta_samples trayectorias por
-      # ciclo (5 Hz). 12*20=240 saturaba los 4 cores compartidos con
-      # camara+aruco+EKF; 5*12=60 deja el DWB muy liviano. Se prioriza la
-      # resolucion angular (vtheta) sobre la lineal: en un diferencial el giro
-      # domina la suavidad, y el accel-limit ya acota la ventana de vx a ~0.16
-      # m/s por ciclo (5 muestras -> ~0.04 m/s, de sobra). Si el seguimiento de
-      # path se ve escalonado, subir vtheta_samples primero.
-      vx_samples: 5
+      # El costo de simulacion escala como vx_samples*vtheta_samples*
+      # controller_frequency. Al subir de 5 a 20 Hz (4x) se cuadruplican los
+      # samples anteriores (5*12=60); los bajamos a 3*5=15 para mantener el
+      # mismo total de simulaciones/seg (15*20=300, igual que 60*5=300).
+      # Ademas a 20 Hz la ventana de velocidad alcanzable por ciclo (acotada
+      # por acc_lim*dt) es 4x mas angosta, asi que estos 15 samples cubren esa
+      # ventana con resolucion igual o mejor que los 60 anteriores sobre la
+      # ventana de 5 Hz -- no es solo un recorte de calidad, es recalcular un
+      # plan similar de fino 4x mas seguido. El costo FIJO por ciclo
+      # (costmap/TF/critics) no se achica igual, asi que la carga total de
+      # CPU igual sube algo: monitorear tegrastats.
+      vx_samples: 3
       vy_samples: 1
-      vtheta_samples: 12
+      vtheta_samples: 5
       sim_time: 1.0
       linear_granularity: 0.05
       # angular_granularity 0.025 -> 0.05: menos puntos por trayectoria donde
@@ -100,7 +113,7 @@ controller_server:
       # Tolerante a jitter de TF cuando la CPU esta cargada (evita abortar el
       # control por "transform timeout").
       transform_tolerance: 1.0
-      xy_goal_tolerance: 0.08
+      xy_goal_tolerance: 0.04
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
