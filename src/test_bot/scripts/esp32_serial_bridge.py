@@ -44,7 +44,16 @@ Funciones:
   - /esp32/motor_cmd (Int16MultiArray [left,right]) -> MODE_CMD(0) + MOTOR_CMD
     (teleop manual; lo alimenta teleop_gateway).
   - /esp32/estop (Bool True) -> BRAKE_ON.
-  - HEARTBEAT cada 50ms; BRAKE al cerrar; watchdog de /cmd_vel (frena si se corta).
+  - HEARTBEAT cada 50ms; BRAKE al cerrar.
+  - Lazo de control a tasa fija (control_period, 20 Hz): los callbacks solo
+    actualizan un buffer con el ultimo comando; _control_tick lo reenvia
+    continuamente al ESP32 para que el setpoint del firmware nunca envejezca
+    entre ciclos del planner (nav2 publica a ~5 Hz vs NAV_VEL_TIMEOUT_MS=300ms).
+    Si la fuente activa se corta (cmd_vel_timeout) manda UN stop y deja de enviar.
+  - Arbitraje de modo "sticky": la fuente que tiene el modo lo conserva mientras
+    sus comandos esten frescos; la otra fuente no puede robarlo. Un /esp32/mode
+    explicito (boton GUI o goal de navegacion via gui_bridge_node) cambia el modo
+    al instante con una ventana de gracia (mode_switch_grace).
 
 El EKF publica el TF odom->base_link, asi que aca publish_odom_tf=false por defecto.
 """
@@ -199,7 +208,9 @@ class Esp32SerialBridge(Node):
         self.declare_parameter("publish_odom_tf", False)  # el EKF da odom->base_link
         self.declare_parameter("max_linear_speed", 0.3)   # m/s, clamp /cmd_vel
         self.declare_parameter("max_angular_speed", 2.0)  # rad/s, clamp /cmd_vel
-        self.declare_parameter("cmd_vel_timeout", 0.5)    # s, frena si se corta
+        self.declare_parameter("cmd_vel_timeout", 0.5)    # s, frena si el cmd activo se corta
+        self.declare_parameter("control_period", 0.05)    # s, resend continuo del ultimo cmd
+        self.declare_parameter("mode_switch_grace", 2.0)  # s, ventana tras /esp32/mode explicito
         self.declare_parameter("heartbeat_period", 0.05)  # s (<200ms watchdog FW)
         # Geometria del robot (debe calzar con description/robot_core.xacro) y
         # constante de encoder del firmware (Cfg::WHEEL_CPR en Config.h):
@@ -218,6 +229,8 @@ class Esp32SerialBridge(Node):
         self.max_lin = float(gp("max_linear_speed").value)
         self.max_ang = float(gp("max_angular_speed").value)
         self.cmd_vel_timeout = float(gp("cmd_vel_timeout").value)
+        self.control_period = float(gp("control_period").value)
+        self.mode_switch_grace = float(gp("mode_switch_grace").value)
         self.wheel_radius = float(gp("wheel_radius").value)
         self.wheel_separation = float(gp("wheel_separation").value)
         self.wheel_cpr = float(gp("wheel_cpr").value)
@@ -237,8 +250,18 @@ class Esp32SerialBridge(Node):
 
         # Estado
         self._mode = None            # None/0/1 para no spamear MODE_CMD
-        self._last_cmd_vel_t = None  # timestamp (s) de la ultima /cmd_vel recibida
-        self._cmd_vel_active = False
+        # Buffer/timeout compartido por AMBAS fuentes (manual y nav): solo una
+        # esta activa a la vez (la que fijo el _mode actual), asi que basta un
+        # unico timestamp/flag de vigencia en vez de duplicar el mecanismo.
+        # Arbitraje "sticky": mientras la fuente activa este fresca, la otra
+        # NO puede robarle el modo. Un /esp32/mode explicito si cambia el modo
+        # al instante y abre una ventana de gracia (_hold_until) para que la
+        # nueva fuente alcance a publicar sin perder el control.
+        self._last_cmd_t = None      # timestamp (s) del ultimo cmd de la fuente activa
+        self._cmd_active = False
+        self._hold_until = 0.0       # hasta este t (s) el modo actual es inrobable
+        self._last_wheel_cmd = (0.0, 0.0)   # (rad/s izq, rad/s der) — buffer modo nav
+        self._last_motor_cmd = (0, 0)       # (left, right) PWM crudo — buffer modo manual
         self._ser = None
         self._write_lock = threading.Lock()
 
@@ -262,7 +285,7 @@ class Esp32SerialBridge(Node):
         # Heartbeat + watchdog en timers ROS (corren en el hilo de spin)
         hb = float(gp("heartbeat_period").value)
         self.create_timer(hb, self._send_heartbeat)
-        self.create_timer(0.1, self._check_cmd_vel_timeout)
+        self.create_timer(self.control_period, self._control_tick)
 
         self.get_logger().info(
             "esp32_serial_bridge listo en %s @ %d. /cmd_vel->WHEEL_VEL_CMD "
@@ -406,28 +429,49 @@ class Esp32SerialBridge(Node):
         v_right = v + w * (self.wheel_separation / 2.0)
         return v_left / self.wheel_radius, v_right / self.wheel_radius
 
-    def _on_cmd_vel(self, msg):
-        self._last_cmd_vel_t = self.get_clock().now().nanoseconds * 1e-9
-        self._cmd_vel_active = True
-        self._set_mode(1)  # autonomous_nav
+    def _now(self):
+        return self.get_clock().now().nanoseconds * 1e-9
 
+    def _mode_locked(self, now):
+        """True si el modo actual NO puede ser robado por la otra fuente."""
+        if now < self._hold_until:
+            return True
+        return (self._cmd_active and self._last_cmd_t is not None
+                and (now - self._last_cmd_t) <= self.cmd_vel_timeout)
+
+    def _on_cmd_vel(self, msg):
+        """Solo actualiza el buffer; el envio real lo hace _control_tick a tasa fija."""
+        now = self._now()
+        if self._mode == 0 and self._mode_locked(now):
+            return  # manual tiene el control y esta fresco: nav no lo roba
         v = max(-self.max_lin, min(self.max_lin, msg.linear.x))
         w = max(-self.max_ang, min(self.max_ang, msg.angular.z))
-        wheel_left, wheel_right = self._wheel_speeds(v, w)
-        self._write(pack_frame(WHEEL_VEL_CMD, struct.pack("<ff", wheel_left, wheel_right)))
+        self._last_wheel_cmd = self._wheel_speeds(v, w)
+        self._last_cmd_t = now
+        self._cmd_active = True
+        self._set_mode(1)  # autonomous_nav
 
     def _on_motor_cmd(self, msg):
+        """Solo actualiza el buffer; el envio real lo hace _control_tick a tasa fija."""
         if len(msg.data) < 2:
             return
-        self._set_mode(0)  # manual
+        now = self._now()
+        if self._mode == 1 and self._mode_locked(now):
+            return  # nav tiene el control y esta fresco: manual no lo roba
         left = int(max(-32768, min(32767, msg.data[0])))
         right = int(max(-32768, min(32767, msg.data[1])))
-        self._write(pack_frame(MOTOR_CMD, struct.pack("<hhh", left, right, 0)))
+        self._last_motor_cmd = (left, right)
+        self._last_cmd_t = now
+        self._cmd_active = True
+        self._set_mode(0)  # manual
 
     def _on_estop(self, msg):
         if msg.data:
             self._write(pack_frame(BRAKE_ON))
-            self._cmd_vel_active = False
+            self._cmd_active = False
+            self._hold_until = 0.0
+            self._last_wheel_cmd = (0.0, 0.0)
+            self._last_motor_cmd = (0, 0)
 
     def _on_pid_param(self, msg):
         # [ctrl_id, param_id, value] -> PID_PARAM 0x13 <BBf> (igual que cobs_frame.py).
@@ -447,18 +491,52 @@ class Esp32SerialBridge(Node):
         self._write(pack_frame(SETPOINT_COMP, struct.pack("<BBf", comp, 0, value)))
 
     def _on_mode_cmd(self, msg):
-        self._set_mode(int(msg.data) & 0x01)
+        """Cambio de modo EXPLICITO (boton de la GUI o goal de navegacion).
 
-    def _check_cmd_vel_timeout(self):
-        if not self._cmd_vel_active or self._last_cmd_vel_t is None:
+        Siempre gana sobre el arbitraje implicito: fija el modo, limpia los
+        buffers (arranca detenido) y abre una ventana de gracia para que la
+        nueva fuente alcance a publicar antes de que la otra pueda reclamar.
+        """
+        mode = int(msg.data) & 0x01
+        if mode == self._mode:
             return
-        now = self.get_clock().now().nanoseconds * 1e-9
-        if (now - self._last_cmd_vel_t) > self.cmd_vel_timeout:
-            self._cmd_vel_active = False
-            # El firmware ya frena solo si WHEEL_VEL_CMD queda viejo
-            # (NAV_VEL_TIMEOUT_MS); esto es defensa adicional.
-            self._write(pack_frame(WHEEL_VEL_CMD, struct.pack("<ff", 0.0, 0.0)))
-            self.get_logger().warn("Sin /cmd_vel; frenando (WHEEL_VEL_CMD 0,0).")
+        self._set_mode(mode)
+        self._last_wheel_cmd = (0.0, 0.0)
+        self._last_motor_cmd = (0, 0)
+        self._cmd_active = True
+        self._last_cmd_t = self._now()
+        self._hold_until = self._last_cmd_t + self.mode_switch_grace
+
+    def _control_tick(self):
+        """Reenvia el ultimo comando bufferizado a tasa fija (control_period).
+
+        Esto desacopla la tasa de envio al ESP32 de la tasa a la que llegan
+        los comandos ROS: nav2 publica /cmd_vel a ~5 Hz, muy cerca del
+        NAV_VEL_TIMEOUT_MS=300ms del firmware, y cualquier jitter hacia que
+        el firmware frenara entre ciclos del planner (movimiento a tirones).
+        Con este resend continuo el setpoint del firmware nunca envejece
+        mientras la fuente activa siga viva.
+        """
+        if not self._cmd_active:
+            return
+        now = self._now()
+        if not self._mode_locked(now):
+            # La fuente activa se corto: un solo stop y dejar de reenviar.
+            self._cmd_active = False
+            self._last_wheel_cmd = (0.0, 0.0)
+            self._last_motor_cmd = (0, 0)
+            if self._mode == 1:
+                self._write(pack_frame(WHEEL_VEL_CMD, struct.pack("<ff", 0.0, 0.0)))
+            else:
+                self._write(pack_frame(MOTOR_CMD, struct.pack("<hhh", 0, 0, 0)))
+            self.get_logger().warn("Fuente de comandos cortada; frenando.")
+            return
+        if self._mode == 1:
+            wl, wr = self._last_wheel_cmd
+            self._write(pack_frame(WHEEL_VEL_CMD, struct.pack("<ff", wl, wr)))
+        elif self._mode == 0:
+            left, right = self._last_motor_cmd
+            self._write(pack_frame(MOTOR_CMD, struct.pack("<hhh", left, right, 0)))
 
     def _send_heartbeat(self):
         self._write(pack_frame(HEARTBEAT))
