@@ -2,7 +2,10 @@
 #
 # Diferencias respecto al ekf.yaml de sim:
 #   - use_sim_time: false (robot real).
-#   - SIN imu0: el ESP32 transmite odometria YA fusionada (no IMU cruda).
+#   - SIN imu0: el ESP32 ya no tiene IMU ni odometria propia (se elimino la
+#     clase Odometry del firmware); solo manda encoders/velocidades crudas
+#     por rueda. esp32_serial_bridge calcula la odometria diferencial en el
+#     Jetson (ver su docstring) y publica /odom.
 #   - odom0 = /odom (de esp32_serial_bridge): usamos VELOCIDADES (vx, vyaw).
 #     La pose absoluta la corrige /aruco_pose en el filtro de map.
 #

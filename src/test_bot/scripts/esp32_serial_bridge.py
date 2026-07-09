@@ -9,26 +9,36 @@ Protocolo (byte-compatible con capbot-jetson-bridge/protocol/cobs_frame.py):
   frame en el cable:  COBS( [type:1][len:1][payload:len][crc16:2] ) + 0x00
   CRC16-CCITT poly=0x1021 init=0xFFFF sobre [type+len+payload].
 
-MsgTypes (capbot-ESP32/include/Config.h, branch nav2-integration):
-  0x10 MOTOR_CMD   <hhh> (left,right,aux)   PWM crudo por rueda (modo MANUAL)
-  0x11 BRAKE_ON    -                         freno activo
-  0x12 HEARTBEAT   -                         para el watchdog del ESP32 (<200ms)
-  0x14 SETPOINT_COMP <BBf> (comp,res,val)    setpoint de posicion (modo WAYPOINT)
-  0x15 MODE_CMD    <B> (0=manual,1=autonomous_nav,2=autonomous_waypoint)
-  0x16 VEL_CMD     <ff> (v[m/s], heading[rad absoluto])  modo AUTONOMOUS_NAV:
-       el eje lineal corre el PID de velocidad directo sobre v; el eje angular
-       NO es una velocidad, es un heading absoluto (mismo eje que odo.a) que
-       el firmware corre en cascada posicion->velocidad. nav2 publica /cmd_vel
-       como velocidad (angular.z rad/s), por eso este puente la integra sobre
-       el theta actual del ESP32 antes de mandarla (ver _on_cmd_vel).
-  0x20 TELEMETRY   JSON UTF-8 (ESP32->Jetson)
-  0x21 ESP_HELLO   -
+MsgTypes (capbot-ESP32/include/Config.h):
+  0x10 MOTOR_CMD      <hhh> (left,right,aux)   PWM crudo por rueda (modo MANUAL)
+  0x11 BRAKE_ON       -                         freno activo
+  0x12 HEARTBEAT      -                         para el watchdog del ESP32 (<200ms)
+  0x14 SETPOINT_COMP  <BBf> (comp,res,val)      setpoint de posicion (modo WAYPOINT)
+  0x15 MODE_CMD       <B> (0=manual,1=autonomous_nav,2=autonomous_waypoint)
+  0x16 WHEEL_VEL_CMD  <ff> (wheelLeft, wheelRight) [rad/s] modo AUTONOMOUS_NAV:
+       setpoints de velocidad POR RUEDA. El firmware ya no mezcla lineal/
+       angular ni corre odometria propia: cada rueda tiene su PID
+       independiente (Controlador::leftWheelPid/rightWheelPid) contra este
+       setpoint en rad/s. Este puente hace el mixing diferencial de /cmd_vel
+       (Twist) -> (wheelLeft, wheelRight) (ver _on_cmd_vel).
+  0x20 TELEMETRY      JSON UTF-8 (ESP32->Jetson), cada TELEMETRY_PERIOD_MS (20ms):
+       {enc_left, enc_right,           cuentas de encoder acumuladas (crudo)
+        vel_left_cps, vel_right_cps,   cuentas/s crudas (NO son rad/s ni m/s)
+        pwm_left, pwm_right, braking,  estado del driver de motores
+        ctrl: {sp_left, sp_right}}     setpoint activo por rueda (rad/s)
+       Ya NO trae pose (x,y,theta,v,w): la clase Odometry que fusionaba
+       encoders+IMU se elimino del firmware. "la navegacion/pose vive en
+       nav2 + EKF, en la Jetson" (comentario en ESP32/main.cpp) -> este
+       puente calcula la odometria (velocidad de rueda -> v,w -> pose 2D)
+       a partir de vel_left_cps/vel_right_cps y las constantes geometricas
+       del robot (wheel_radius, wheel_separation, wheel_cpr).
+  0x21 ESP_HELLO      -
 
 Funciones:
-  - Lee TELEMETRY (JSON {mode,u,odo:{x,y,a,v,w},sp,error}) -> nav_msgs/Odometry
-    en /odom. odo.a (theta) y odo.w (omega) vienen en GRADOS/grados-s -> rad.
-  - /cmd_vel (Twist) -> MODE_CMD(1) + VEL_CMD(v m/s, heading rad). heading se
-    integra como theta_actual + angular.z*dt (dt medido entre llamadas).
+  - Lee TELEMETRY (JSON crudo de encoders/PWM/setpoints) -> calcula odometria
+    diferencial en el Jetson -> publica nav_msgs/Odometry en /odom.
+  - /cmd_vel (Twist) -> MODE_CMD(1) + WHEEL_VEL_CMD (wheelLeft, wheelRight
+    en rad/s, mixing diferencial estandar con wheel_radius/wheel_separation).
   - /esp32/motor_cmd (Int16MultiArray [left,right]) -> MODE_CMD(0) + MOTOR_CMD
     (teleop manual; lo alimenta teleop_gateway).
   - /esp32/estop (Bool True) -> BRAKE_ON.
@@ -67,7 +77,7 @@ HEARTBEAT = 0x12
 PID_PARAM = 0x13
 SETPOINT_COMP = 0x14
 MODE_CMD = 0x15
-VEL_CMD = 0x16
+WHEEL_VEL_CMD = 0x16
 TELEMETRY = 0x20
 ESP_HELLO = 0x21
 
@@ -169,8 +179,7 @@ class FrameBuffer:
 
 
 # --------------------------------------------------------------------------
-DEG2RAD = math.pi / 180.0
-RAD2DEG = 180.0 / math.pi
+TWO_PI = 2.0 * math.pi
 
 
 def yaw_to_quat(yaw):
@@ -190,6 +199,13 @@ class Esp32SerialBridge(Node):
         self.declare_parameter("max_angular_speed", 2.0)  # rad/s, clamp /cmd_vel
         self.declare_parameter("cmd_vel_timeout", 0.5)    # s, frena si se corta
         self.declare_parameter("heartbeat_period", 0.05)  # s (<200ms watchdog FW)
+        # Geometria del robot (debe calzar con description/robot_core.xacro) y
+        # constante de encoder del firmware (Cfg::WHEEL_CPR en Config.h):
+        # cuentas por vuelta de rueda en cuadratura 4x. Con esto se convierte
+        # vel_*_cps (cuentas/s crudas) <-> rad/s de cada rueda.
+        self.declare_parameter("wheel_radius", 0.035)      # m
+        self.declare_parameter("wheel_separation", 0.17)   # m (track width)
+        self.declare_parameter("wheel_cpr", 910)            # cuentas/vuelta (4x)
 
         gp = self.get_parameter
         self.port = gp("serial_port").value
@@ -200,6 +216,9 @@ class Esp32SerialBridge(Node):
         self.max_lin = float(gp("max_linear_speed").value)
         self.max_ang = float(gp("max_angular_speed").value)
         self.cmd_vel_timeout = float(gp("cmd_vel_timeout").value)
+        self.wheel_radius = float(gp("wheel_radius").value)
+        self.wheel_separation = float(gp("wheel_separation").value)
+        self.wheel_cpr = float(gp("wheel_cpr").value)
 
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
         self.telem_pub = self.create_publisher(String, "/esp32/telemetry", 10)
@@ -216,11 +235,16 @@ class Esp32SerialBridge(Node):
 
         # Estado
         self._mode = None            # None/0/1 para no spamear MODE_CMD
-        self._theta_rad = 0.0        # ultimo theta de odometria (de TELEMETRY)
         self._last_cmd_vel_t = None  # timestamp (s) de la ultima /cmd_vel recibida
         self._cmd_vel_active = False
         self._ser = None
         self._write_lock = threading.Lock()
+
+        # Odometria (integrada aca; el ESP32 solo manda encoders/velocidades crudas).
+        self._x = 0.0
+        self._y = 0.0
+        self._theta = 0.0
+        self._last_telem_t = None    # timestamp (s) de la ultima TELEMETRY
 
         if serial is None:
             self.get_logger().fatal("pyserial no instalado (pip install pyserial).")
@@ -239,8 +263,9 @@ class Esp32SerialBridge(Node):
         self.create_timer(0.1, self._check_cmd_vel_timeout)
 
         self.get_logger().info(
-            "esp32_serial_bridge listo en %s @ %d. /cmd_vel->VEL_CMD (v m/s, "
-            "heading rad), /esp32/motor_cmd->MOTOR_CMD (manual)."
+            "esp32_serial_bridge listo en %s @ %d. /cmd_vel->WHEEL_VEL_CMD "
+            "(rad/s por rueda), /esp32/motor_cmd->MOTOR_CMD (manual). "
+            "Odometria calculada en el Jetson desde vel_*_cps."
             % (self.port, self.baud))
 
     # ----------------------- serie -----------------------
@@ -287,7 +312,7 @@ class Esp32SerialBridge(Node):
                 elif msg_type == ESP_HELLO:
                     self.get_logger().info("ESP32 HELLO")
 
-    # ----------------------- telemetria -> /odom -----------------------
+    # ----------------------- telemetria -> odometria -> /odom -----------------------
     def _handle_telemetry(self, payload):
         import json
         try:
@@ -299,27 +324,47 @@ class Esp32SerialBridge(Node):
         smsg = String()
         smsg.data = text
         self.telem_pub.publish(smsg)
-        odo = data.get("odo")
-        if not isinstance(odo, dict):
-            return
+
         try:
-            x = float(odo["x"]); y = float(odo["y"])
-            theta = float(odo["a"]) * DEG2RAD     # grados -> rad
-            v = float(odo["v"])
-            w = float(odo["w"]) * DEG2RAD          # grados/s -> rad/s
+            vel_left_cps = float(data["vel_left_cps"])
+            vel_right_cps = float(data["vel_right_cps"])
         except (KeyError, TypeError, ValueError):
             return
-        self._theta_rad = theta  # usado por _on_cmd_vel para integrar heading
+
+        # cuentas/s -> rad/s de cada rueda -> m/s tangencial de cada rueda.
+        omega_left = (vel_left_cps / self.wheel_cpr) * TWO_PI
+        omega_right = (vel_right_cps / self.wheel_cpr) * TWO_PI
+        v_left = omega_left * self.wheel_radius
+        v_right = omega_right * self.wheel_radius
+
+        # Cinematica diferencial estandar.
+        v = (v_left + v_right) / 2.0
+        w = (v_right - v_left) / self.wheel_separation
+
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._last_telem_t is None or (now - self._last_telem_t) > 0.5:
+            dt = 0.0
+        else:
+            dt = now - self._last_telem_t
+        self._last_telem_t = now
+
+        # Integracion "midpoint" (igual que diff_drive_controller): mas precisa
+        # que Euler simple cuando w != 0 dentro del intervalo.
+        half_dtheta = 0.5 * w * dt
+        self._x += v * math.cos(self._theta + half_dtheta) * dt
+        self._y += v * math.sin(self._theta + half_dtheta) * dt
+        self._theta += w * dt
+        self._theta = math.atan2(math.sin(self._theta), math.cos(self._theta))  # wrap +-pi
 
         stamp = self.get_clock().now().to_msg()
-        qx, qy, qz, qw = yaw_to_quat(theta)
+        qx, qy, qz, qw = yaw_to_quat(self._theta)
 
         msg = Odometry()
         msg.header.stamp = stamp
         msg.header.frame_id = self.odom_frame
         msg.child_frame_id = self.base_frame
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
+        msg.pose.pose.position.x = self._x
+        msg.pose.pose.position.y = self._y
         msg.pose.pose.orientation.x = qx
         msg.pose.pose.orientation.y = qy
         msg.pose.pose.orientation.z = qz
@@ -339,8 +384,8 @@ class Esp32SerialBridge(Node):
             tf.header.stamp = stamp
             tf.header.frame_id = self.odom_frame
             tf.child_frame_id = self.base_frame
-            tf.transform.translation.x = x
-            tf.transform.translation.y = y
+            tf.transform.translation.x = self._x
+            tf.transform.translation.y = self._y
             tf.transform.rotation.x = qx
             tf.transform.rotation.y = qy
             tf.transform.rotation.z = qz
@@ -353,28 +398,21 @@ class Esp32SerialBridge(Node):
             self._mode = mode
             self._write(pack_frame(MODE_CMD, struct.pack("<B", mode & 0xFF)))
 
+    def _wheel_speeds(self, v, w):
+        """Mixing diferencial: (v,w) del chasis -> (rad/s izq, rad/s der)."""
+        v_left = v - w * (self.wheel_separation / 2.0)
+        v_right = v + w * (self.wheel_separation / 2.0)
+        return v_left / self.wheel_radius, v_right / self.wheel_radius
+
     def _on_cmd_vel(self, msg):
-        now = self.get_clock().now().nanoseconds * 1e-9
-        # dt entre /cmd_vel sucesivas (nav2 publica a controller_frequency,
-        # 10Hz -> ~0.1s). En la primera llamada (o tras un hueco largo) no hay
-        # base valida: dt=0 deja el heading en el theta actual, sin salto.
-        if self._last_cmd_vel_t is None or (now - self._last_cmd_vel_t) > 0.5:
-            dt = 0.0
-        else:
-            dt = now - self._last_cmd_vel_t
-        self._last_cmd_vel_t = now
+        self._last_cmd_vel_t = self.get_clock().now().nanoseconds * 1e-9
         self._cmd_vel_active = True
         self._set_mode(1)  # autonomous_nav
 
         v = max(-self.max_lin, min(self.max_lin, msg.linear.x))
-        w_rad = max(-self.max_ang, min(self.max_ang, msg.angular.z))
-        # El firmware NO espera una velocidad angular: VEL_CMD.angular es un
-        # heading absoluto en radianes (cascada posicion->velocidad on-board).
-        # nav2 manda velocidad (angular.z), asi que la integramos sobre el
-        # theta actual del ESP32 para obtener el heading objetivo.
-        heading = self._theta_rad + w_rad * dt
-        heading = math.atan2(math.sin(heading), math.cos(heading))  # wrap +-pi
-        self._write(pack_frame(VEL_CMD, struct.pack("<ff", v, heading)))
+        w = max(-self.max_ang, min(self.max_ang, msg.angular.z))
+        wheel_left, wheel_right = self._wheel_speeds(v, w)
+        self._write(pack_frame(WHEEL_VEL_CMD, struct.pack("<ff", wheel_left, wheel_right)))
 
     def _on_motor_cmd(self, msg):
         if len(msg.data) < 2:
@@ -415,12 +453,10 @@ class Esp32SerialBridge(Node):
         now = self.get_clock().now().nanoseconds * 1e-9
         if (now - self._last_cmd_vel_t) > self.cmd_vel_timeout:
             self._cmd_vel_active = False
-            # heading = theta actual (no 0.0 absoluto): si mandaramos 0.0 el
-            # robot giraria para mirar el rumbo "cero" del mundo en vez de
-            # simplemente quedarse quieto. El firmware ya frena solo si VEL_CMD
-            # queda viejo (NAV_VEL_TIMEOUT_MS); esto es defensa adicional.
-            self._write(pack_frame(VEL_CMD, struct.pack("<ff", 0.0, self._theta_rad)))
-            self.get_logger().warn("Sin /cmd_vel; frenando (VEL_CMD 0, heading actual).")
+            # El firmware ya frena solo si WHEEL_VEL_CMD queda viejo
+            # (NAV_VEL_TIMEOUT_MS); esto es defensa adicional.
+            self._write(pack_frame(WHEEL_VEL_CMD, struct.pack("<ff", 0.0, 0.0)))
+            self.get_logger().warn("Sin /cmd_vel; frenando (WHEEL_VEL_CMD 0,0).")
 
     def _send_heartbeat(self):
         self._write(pack_frame(HEARTBEAT))
