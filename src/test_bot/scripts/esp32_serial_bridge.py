@@ -21,11 +21,13 @@ MsgTypes (capbot-ESP32/include/Config.h):
        independiente (Controlador::leftWheelPid/rightWheelPid) contra este
        setpoint en rad/s. Este puente hace el mixing diferencial de /cmd_vel
        (Twist) -> (wheelLeft, wheelRight) (ver _on_cmd_vel).
-  0x20 TELEMETRY      JSON UTF-8 (ESP32->Jetson), cada TELEMETRY_PERIOD_MS (20ms):
-       {enc_left, enc_right,           cuentas de encoder acumuladas (crudo)
-        vel_left_cps, vel_right_cps,   cuentas/s crudas (NO son rad/s ni m/s)
-        pwm_left, pwm_right, braking,  estado del driver de motores
-        ctrl: {sp_left, sp_right}}     setpoint activo por rueda (rad/s)
+  0x20 TELEMETRY      JSON UTF-8 (ESP32->Jetson), cada TELEMETRY_PERIOD_MS (20ms).
+       Espejo de SensorHub::buildPayload (capbot-ESP32):
+       {mode: "manual"|...,
+        u: {enc_left, enc_right,           cuentas de encoder acumuladas (crudo)
+            vel_left_cps, vel_right_cps,   cuentas/s crudas (NO son rad/s ni m/s)
+            pwm_left, pwm_right, braking}, estado del driver de motores
+        ctrl: {sp_left, sp_right}}         setpoint activo por rueda (rad/s)
        Ya NO trae pose (x,y,theta,v,w): la clase Odometry que fusionaba
        encoders+IMU se elimino del firmware. "la navegacion/pose vive en
        nav2 + EKF, en la Jetson" (comentario en ESP32/main.cpp) -> este
@@ -326,8 +328,8 @@ class Esp32SerialBridge(Node):
         self.telem_pub.publish(smsg)
 
         try:
-            vel_left_cps = float(data["vel_left_cps"])
-            vel_right_cps = float(data["vel_right_cps"])
+            vel_left_cps = float(data["u"]["vel_left_cps"])
+            vel_right_cps = float(data["u"]["vel_right_cps"])
         except (KeyError, TypeError, ValueError):
             return
 
