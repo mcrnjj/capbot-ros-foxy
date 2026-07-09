@@ -27,6 +27,7 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from action_msgs.msg import GoalStatus
+from std_msgs.msg import Int8
 
 import tf2_ros
 
@@ -67,6 +68,10 @@ class GuiBridge(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self._action = ActionClient(self, NavigateToPose, "navigate_to_pose")
+        # Anuncia el cambio de modo a esp32_serial_bridge: goal -> nav (1),
+        # cancel -> manual (0). Asi el modo no depende de "quien publico
+        # ultimo" sino de la intencion explicita del usuario.
+        self._mode_pub = self.create_publisher(Int8, "/esp32/mode", 10)
         self._nav_ready = False
         # wait_for_server blocks with time.sleep() internally — run in a thread
         # so the ROS spin loop (needed for DDS discovery) is never blocked.
@@ -113,9 +118,11 @@ class GuiBridge(Node):
 
         # 2) Enviar goal pendiente.
         if goal_req is not None:
+            self._mode_pub.publish(Int8(data=1))  # nav toma el control
             self._send_goal(*goal_req)
         if cancel and self._goal_handle is not None:
             self._goal_handle.cancel_goal_async()
+            self._mode_pub.publish(Int8(data=0))  # devuelve el control manual
 
     def _lookup_pose(self):
         for target, source in ((self.map_frame, self.base_frame),
