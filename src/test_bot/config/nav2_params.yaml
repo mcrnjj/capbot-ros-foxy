@@ -76,13 +76,15 @@ controller_server:
       # el CENTRO tiene que casi coincidir con el goal, lo cual en la practica
       # nunca se veia "temprano" -- el problema real era el planner.tolerance
       # de 0.30 (arriba) corriendo el punto final lejos del goal pedido.
-      # &robot_radius: fuente unica reusada via alias (*robot_radius) en
-      # FollowPath.xy_goal_tolerance y en robot_radius de ambos costmaps, asi
-      # no puede volver a quedar desincronizado como paso con 0.01 vs 0.04.
-      # Da la semantica pedida: "goal alcanzado" = el CUERPO del robot
-      # (circulo de radio robot_radius) toca el punto del goal, exactamente
-      # cuando center-to-goal == robot_radius.
-      xy_goal_tolerance: &robot_radius 0.22
+      # Igual a robot_radius (ver FollowPath.xy_goal_tolerance y robot_radius
+      # de ambos costmaps mas abajo, EN ESTE ARCHIVO deben editarse juntos:
+      # rcl_yaml_param_parser de Foxy NO soporta anchors/alias de YAML
+      # ("Will not support aliasing"), asi que no se puede compartir el valor
+      # con &/* -- eso crashea TODOS los nodos nav2 que cargan este archivo
+      # (fue justo lo que paso). Da la semantica pedida: "goal alcanzado" =
+      # el CUERPO del robot (circulo de radio robot_radius) toca el punto
+      # del goal, exactamente cuando center-to-goal == robot_radius.
+      xy_goal_tolerance: 0.22
       yaw_goal_tolerance: 0.30
       stateful: true
 
@@ -123,7 +125,7 @@ controller_server:
       # Tolerante a jitter de TF cuando la CPU esta cargada (evita abortar el
       # control por "transform timeout").
       transform_tolerance: 1.0
-      xy_goal_tolerance: *robot_radius
+      xy_goal_tolerance: 0.22    # = robot_radius (ver nota en goal_checker arriba)
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
@@ -150,7 +152,7 @@ global_costmap:
       publish_frequency: 0.5
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: *robot_radius
+      robot_radius: 0.22    # = xy_goal_tolerance (ver nota en goal_checker)
       resolution: 0.05
       track_unknown_space: false
       # TF map->base viene del EKF; margen amplio para no fallar bajo carga.
@@ -177,7 +179,7 @@ local_costmap:
       width: 1
       height: 1
       resolution: 0.05
-      robot_radius: *robot_radius
+      robot_radius: 0.22    # = xy_goal_tolerance (ver nota en goal_checker)
       # TF odom->base es local y estable, pero damos margen igual bajo carga.
       transform_tolerance: 0.5
       plugins: ["inflation_layer"]
