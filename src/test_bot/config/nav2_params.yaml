@@ -55,8 +55,8 @@ controller_server:
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.18
-      yaw_goal_tolerance: 0.40
+      xy_goal_tolerance: 0.08
+      yaw_goal_tolerance: 0.30
       stateful: true
 
     FollowPath:
@@ -83,7 +83,7 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.18
+      xy_goal_tolerance: 0.08
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
@@ -129,8 +129,8 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 3
-      height: 3
+      width: 0.5
+      height: 0.5
       resolution: 0.05
       robot_radius: 0.22
       plugins: ["inflation_layer"]
