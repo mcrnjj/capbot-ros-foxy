@@ -99,7 +99,11 @@ def generate_launch_description():
         # 27 es muy laxo a proposito: con camera.yaml SIN calibrar el error de
         # reproyeccion es alto. RECALIBRAR camera.yaml y bajar a ~3.0.
         'max_reproj_error_px': 60.0,
-        'min_marker_area_px': 200.0,
+        # Filtro de distancia REAL independiente de calibracion: el area en px
+        # no depende de los intrinsecos. Con marcador de 10 cm y f~500,
+        # area ~ (500*0.1/d)^2  ->  0.45 m ~ 12000 px2, 0.7 m ~ 5000 px2.
+        # Tunear mirando "area=" en el log OK del aruco_localizer.
+        'min_marker_area_px': 8000.0,
         'filter_window': 1,
         'ambiguity_ratio_threshold': 1.5,
     }

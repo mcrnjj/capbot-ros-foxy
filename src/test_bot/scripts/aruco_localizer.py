@@ -382,7 +382,7 @@ class ArucoLocalizer(Node):
             weight = area / (1.0 + err)
             estimates.append((marker_id, T_map_base, weight, err))
             diagnostics.append(
-                f"id={marker_id} OK(d={distance:.2f}m,err={err:.2f}px,w={weight:.0f})"
+                f"id={marker_id} OK(d={distance:.2f}m,err={err:.2f}px,area={area:.0f}px2,w={weight:.0f})"
             )
 
         if not estimates:
