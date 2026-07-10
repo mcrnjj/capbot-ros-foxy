@@ -38,11 +38,12 @@ Topics (pub):
 Parametros (todos con default):
   network ('ssd-mobilenet-v2'), threshold, image_topic, camera_info_topic,
   camera_frame, base_frame, ground_z, max_distance, class_filter,
-  publish_cloud, publish_json, min_bbox_height_px
+  publish_cloud, publish_json, min_bbox_height_px, inference_rate_hz
 """
 
 import sys
 import json
+import time
 import struct
 
 import numpy as np
@@ -133,6 +134,11 @@ class ObjectDetector(Node):
         self.declare_parameter("publish_json", True)
         # bboxes muy chatos suelen ser falsos positivos lejanos.
         self.declare_parameter("min_bbox_height_px", 20)
+        # Tasa MAXIMA de inferencia (Hz); 0 = sin limite (cada frame). Bajarla
+        # ahorra energia: la GPU solo trabaja en los frames que pasan el
+        # throttle. A nav2 le sobra con 3 Hz (el planner replanifica a ~1 Hz y
+        # el costmap local actualiza a 5 Hz).
+        self.declare_parameter("inference_rate_hz", 3.0)
 
         gp = lambda n: self.get_parameter(n).get_parameter_value()
         self.camera_frame = gp("camera_frame").string_value
@@ -143,6 +149,9 @@ class ObjectDetector(Node):
         self.class_filter = [c for c in gp("class_filter").string_array_value if c]
         self.do_cloud = gp("publish_cloud").bool_value
         self.do_json = gp("publish_json").bool_value
+        rate = gp("inference_rate_hz").double_value
+        self._inf_period = (1.0 / rate) if rate > 0 else 0.0
+        self._last_inf = 0.0
 
         network = gp("network").string_value
         threshold = gp("threshold").double_value
@@ -235,6 +244,12 @@ class ObjectDetector(Node):
     def image_cb(self, msg):
         if self._busy:
             return
+        # Throttle ANTES de tocar el frame: los que se descartan no pagan ni la
+        # conversion numpy ni la copia H->D ni la GPU (ese es el ahorro).
+        now = time.monotonic()
+        if self._inf_period > 0.0 and (now - self._last_inf) < self._inf_period:
+            return
+        self._last_inf = now
         self._busy = True
         try:
             self.process(msg)

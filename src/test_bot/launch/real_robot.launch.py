@@ -69,8 +69,14 @@ def generate_launch_description():
         package='test_bot', executable='object_detector',
         name='object_detector', output='screen',
         parameters=[{
-            'network': 'ssd-mobilenet-v2',
+            # v1: mas liviana que v2 (menos GPU por frame -> menos consumo).
+            # OJO: el 1er arranque tras cambiar la red, TensorRT reconstruye
+            # el engine (~3-5 min en la Nano); despues queda cacheado.
+            'network': 'ssd-mobilenet-v1',
             'threshold': 0.5,
+            # Throttle de inferencia (Hz): la GPU trabaja solo en estos frames.
+            # A nav2 le sobra con 3 Hz (planner ~1 Hz, costmap local 5 Hz).
+            'inference_rate_hz': 3.0,
             'image_topic': '/camera/image_raw',
             'camera_info_topic': '/camera/camera_info',
             'camera_frame': 'camera_link_optical',
