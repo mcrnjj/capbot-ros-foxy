@@ -44,7 +44,7 @@ planner_server:
       # lejos de donde el usuario arrastro el goal en la GUI, y el robot
       # "llegaba" ahi en vez de al circulo dibujado. Bajado a 0.05: solo el
       # margen justo para bordes/redondeo, sin desplazar el objetivo real.
-      tolerance: 0.05
+      tolerance: 0.1
       use_astar: true            # dirigido -> explora menos nodos que Dijkstra
       allow_unknown: false
 
@@ -84,7 +84,7 @@ controller_server:
       # (fue justo lo que paso). Da la semantica pedida: "goal alcanzado" =
       # el CUERPO del robot (circulo de radio robot_radius) toca el punto
       # del goal, exactamente cuando center-to-goal == robot_radius.
-      xy_goal_tolerance: 0.15
+      xy_goal_tolerance: 0.1
       yaw_goal_tolerance: 0.30
       stateful: true
 
@@ -101,10 +101,10 @@ controller_server:
       min_speed_theta: 0.0
       acc_lim_x: 0.5
       acc_lim_y: 0.0
-      acc_lim_theta: 1.5
-      decel_lim_x: -0.8
+      acc_lim_theta: 1.1
+      decel_lim_x: -0.5
       decel_lim_y: 0.0
-      decel_lim_theta: -1.5
+      decel_lim_theta: -1.1
       # --- Presupuesto de CPU del DWB (lo mas caro del stack en el Nano) ---
       # El costo de SIMULACION escala como vx_samples*vtheta_samples*
       # controller_frequency; a 10 Hz (mitad de los 20 Hz que no andaban)
