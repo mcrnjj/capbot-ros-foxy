@@ -9,10 +9,13 @@
         - Se añade publicación explícita del CameraInfo con la calibración nominal.
     -->
 
+    <!-- Posicion del CAD v2 (malla imx219, ya en frame base_link porque el
+         chassis ahora coincide con base_link): centro del modulo en
+         (0.1255, 0, 0.0545), montado en el borde frontal de la placa. -->
     <joint name="camera_joint" type="fixed">
         <parent link="chassis"/>
         <child link="camera_link"/>
-        <origin xyz="0.23 0 0.1" rpy="0 0 0"/>
+        <origin xyz="0.1255 0 0.0545" rpy="0 0 0"/>
     </joint>
 
     <link name="camera_link">

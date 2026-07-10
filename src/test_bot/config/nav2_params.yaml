@@ -159,15 +159,16 @@ global_costmap:
       publish_frequency: 0.5
       global_frame: map
       robot_base_frame: base_link
-      # Footprint REAL medido del URDF (robot_core.xacro), relativo a
-      # base_link (eje de las ruedas): chasis 0.16x0.20 desplazado hacia
-      # adelante (x en [-0.03, 0.13], y en [-0.10, 0.10]) + 1cm de margen.
+      # Footprint REAL del robot v2 (mesh CAD en robot_core.xacro), relativo
+      # a base_link (centro del eje): placa x en [-0.047, 0.123] con la
+      # camara sobresaliendo hasta x=0.129, ruedas hasta y=+/-0.098; todo
+      # + ~1cm de margen -> frente 0.14, lados +/-0.11, cola -0.06.
       # Antes: robot_radius 0.22 -> circulo de 0.44m que NO CABE en los
       # pasillos de 0.30m del laberinto; el unico motivo por el que "andaba"
       # era que inflation_radius (0.10) < robot_radius, lo que dejaba sin
       # marcar la banda letal alrededor de las paredes y desactivaba de
       # facto toda la deteccion de colisiones del planner.
-      footprint: "[[0.14, 0.11], [0.14, -0.11], [-0.04, -0.11], [-0.04, 0.11]]"
+      footprint: "[[0.14, 0.11], [0.14, -0.11], [-0.06, -0.11], [-0.06, 0.11]]"
       resolution: 0.05
       track_unknown_space: false
       # TF map->base viene del EKF; margen amplio para no fallar bajo carga.
@@ -207,7 +208,8 @@ local_costmap:
       global_frame: map
       robot_base_frame: base_link
       rolling_window: false
-      footprint: "[[0.14, 0.11], [0.14, -0.11], [-0.04, -0.11], [-0.04, 0.11]]"
+      # Mismo footprint v2 que el global (ver comentario alla).
+      footprint: "[[0.14, 0.11], [0.14, -0.11], [-0.06, -0.11], [-0.06, 0.11]]"
       # TF map->base viene del EKF (igual que el global): margen bajo carga.
       transform_tolerance: 1.0
       plugins: ["static_layer", "inflation_layer"]

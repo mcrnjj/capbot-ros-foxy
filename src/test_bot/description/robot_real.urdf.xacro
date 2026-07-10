@@ -6,9 +6,10 @@
       - lidar.xacro          (el robot real no tiene lidar)
       - gazebo_control.xacro  (plugin diff-drive de Gazebo)
     Solo trae los frames que la pila real necesita:
-      - robot_core.xacro : base_link, base_footprint, chassis, ruedas, caster
+      - robot_core.xacro : base_link, base_footprint, chassis (mesh CAD v2), ruedas, caster
       - camera.xacro     : camera_link + camera_link_optical (frame de ArUco)
       - imu.xacro         : imu_link (frame; la IMU fisica vive en el ESP32)
+      - tof.xacro         : tof_left_link / tof_right_link (ToF frontales v2)
 
     Los bloques <gazebo> dentro de esos xacro son inertes fuera de Gazebo
     (robot_state_publisher los ignora). La cadena base_link -> camera_link_optical
@@ -25,5 +26,6 @@
     <xacro:include filename="robot_core.xacro" />
     <xacro:include filename="camera.xacro" />
     <xacro:include filename="imu.xacro" />
+    <xacro:include filename="tof.xacro" />
 
 </robot>

@@ -32,38 +32,60 @@
     <!-- FIX: el original tenÃ­a '/' como contenido del link, que es texto suelto invalido. -->
     <link name="base_footprint"/>
 
-    <!-- CHASSIS LINK -->
+    <!-- CHASSIS LINK (robot v2: mesh del CAD robot_v2_urdf_v2)
+         El frame chassis ahora COINCIDE con base_link (centro del eje de las
+         ruedas); antes iba corrido -0.1 en x para acomodar la caja del v1.
+         Asi todas las posiciones de sensores quedan directamente en el frame
+         base_link. -->
     <joint name="chassis_joint" type="fixed">
         <parent link="base_link"/>
         <child link="chassis"/>
-        <origin xyz="-0.1 0 0"/>
+        <origin xyz="0 0 0"/>
     </joint>
 
+    <!-- Mesh exportado de Fusion (mm -> scale 0.001). OJO con el export: los
+         origenes de los joints del .xacro del CAD NO son las posiciones de
+         los componentes; las mallas viven todas en un frame global comun.
+         Midiendo las mallas: centro del eje de ruedas en (0.08,-0.047,-0.084)
+         CAD y el FRENTE del robot apunta a -y_cad (camara, ToFs y caster
+         estan todos en el borde y_cad=-0.17). Por eso el mesh va rotado +90
+         en yaw (x_ros = -y_cad) y trasladado para que base_link caiga en el
+         eje:  p_ros = Rz(+90) * (p_cad - (0.08, -0.047, -0.084)).
+         Placa resultante en base_link: x [-0.047, 0.123], y [-0.08, 0.08],
+         decks en z 0.018 (inferior) y 0.084 (superior). -->
     <link name="chassis">
         <visual>
-            <origin xyz="0.15 0 0.075"/>
+            <origin xyz="-0.047 -0.08 0.084" rpy="0 0 ${pi/2}"/>
             <geometry>
-                <box size ="0.16 0.2 0.1"/>
+                <mesh filename="package://test_bot/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="white"/>
         </visual>
-        <!-- FIX: collision igualada a visual (antes 0.16/0.075 vs 0.2/0.19/0.1, inconsistente) -->
         <collision>
-            <origin xyz="0.15 0 0.075"/>
+            <origin xyz="-0.047 -0.08 0.084" rpy="0 0 ${pi/2}"/>
             <geometry>
-                <box size ="0.16 0.2 0.1"/>
+                <mesh filename="package://test_bot/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
-        <xacro:inertial_box mass="1.092" x="0.16" y="0.2" z="0.1">
-            <origin xyz="0.15 0 0.075" rpy="0 0 0"/>
-        </xacro:inertial_box>
+        <!-- Inercial del base_link del CAD (solo la placa, 0.237 kg), tensor
+             rotado al frame ROS (Rz(+90): ixx<->iyy, ixz_ros = -iyz_cad).
+             En este repo no hay Gazebo (robot_state_publisher lo ignora). -->
+        <inertial>
+            <origin xyz="0.0352 0.0 0.0523" rpy="0 0 0"/>
+            <mass value="0.23692"/>
+            <inertia ixx="0.000822" iyy="0.000915" izz="0.001442"
+                     ixy="0.0" ixz="6e-06" iyz="0.0"/>
+        </inertial>
     </link>
 
     <gazebo reference="chassis">
         <material>Gazebo/White</material>
     </gazebo>
 
-    <!-- LEFT WHEEL LINK -->
+    <!-- LEFT WHEEL LINK
+         Posicion verificada contra el CAD v2: plano medio del neumatico a
+         y = +/-0.085 del centro del eje (mallas 65mmWheel), igual que el v1.
+         Solo geometria simple (cilindro), como antes. -->
     <joint name="left_wheel_joint" type="continuous">
         <parent link="base_link"/>
         <child link="left_wheel"/>
@@ -139,11 +161,16 @@
         <maxVel>0.1</maxVel>
     </gazebo>
 
-    <!-- CASTER WHEEL LINK -->
+    <!-- CASTER WHEEL LINK
+         x,y del CAD v2 (bola omni en (0.09, 0) del eje; antes 0.10). La z se
+         mantiene en -0.006 para que la esfera de r=0.029 siga tocando el
+         mismo plano de piso que las ruedas de r=0.035 (en el CAD la bola
+         real es de r=0.005 con centro en z=-0.029; como aca se conserva la
+         primitiva antigua, usar esa z hundiria la esfera 23mm bajo el piso). -->
     <joint name="caster_wheel_joint" type="fixed">
         <parent link="chassis"/>
         <child link="caster_wheel"/>
-        <origin xyz="0.20 0 -0.006"/>
+        <origin xyz="0.09 0 -0.006"/>
     </joint>
 
     <link name="caster_wheel">

@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!--
+        Frames de los dos ToF frontales del robot v2 (VL53-style, mallas
+        tof_v2 del CAD robot_v2_urdf_v2). Solo frames + visual minimo:
+        la lectura real llega por el ESP32 (esp32_serial_bridge), aca no hay
+        plugin de sensor.
+
+        Posiciones medidas de las mallas del CAD, en frame base_link
+        (x adelante, y izquierda): montados en el borde frontal de la placa,
+        flanqueando la camara a +/-0.0234 del eje, mirando hacia adelante
+        (+x, rpy 0).
+    -->
+
+    <joint name="tof_left_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="tof_left_link"/>
+        <origin xyz="0.123 0.0234 0.051" rpy="0 0 0"/>
+    </joint>
+
+    <link name="tof_left_link">
+        <visual>
+            <geometry>
+                <box size="0.004 0.012 0.02"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+    <joint name="tof_right_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="tof_right_link"/>
+        <origin xyz="0.123 -0.0234 0.051" rpy="0 0 0"/>
+    </joint>
+
+    <link name="tof_right_link">
+        <visual>
+            <geometry>
+                <box size="0.004 0.012 0.02"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+</robot>

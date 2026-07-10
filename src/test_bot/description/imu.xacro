@@ -8,10 +8,13 @@
         directa de orientacion para correcciones de yaw del aruco_localizer.
     -->
 
+    <!-- Posicion del CAD v2: la IMU fisica vive en el PCB del ESP32
+         (malla sim_pcb_v5, centro en (0.019, 0.005, 0.085) de base_link,
+         sobre el deck superior). -->
     <joint name="imu_joint" type="fixed">
         <parent link="base_link"/>
         <child link="imu_link"/>
-        <origin xyz="0 0 0.05" rpy="0 0 0"/>
+        <origin xyz="0.019 0.005 0.085" rpy="0 0 0"/>
     </joint>
 
     <link name="imu_link">

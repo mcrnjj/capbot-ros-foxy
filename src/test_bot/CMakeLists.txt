@@ -11,8 +11,9 @@ endif()
 find_package(ament_cmake REQUIRED)
 
 # Assets del robot real (sin worlds/aruco_assets de simulacion).
+# meshes: STL del chasis v2 referenciado como package://test_bot/meshes/...
 install(
-  DIRECTORY config description launch maps
+  DIRECTORY config description launch maps meshes
   DESTINATION share/${PROJECT_NAME}
 )
 
