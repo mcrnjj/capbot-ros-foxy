@@ -59,7 +59,7 @@ ORIGIN_Y = -(HEIGHT_PX * RESOLUTION) / 2.0    # -1.0750 m
 MAP_NAME     = "maze"
 ARUCO_DICT   = "DICT_5X5_250"
 MARKER_SIZE  = 0.10    # metros (lado del cuadrado negro del marcador)
-MARKER_Z     = 0.15    # altura del centro del marcador sobre el suelo
+MARKER_Z     = 0.09    # altura del centro del marcador sobre el suelo
 
 # ---------------------------------------------------------------------------
 # Helpers de conversion pixel <-> coordenada de mapa
