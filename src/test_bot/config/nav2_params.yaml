@@ -185,7 +185,7 @@ global_costmap:
         # costo que empuja los planes de NavFn al CENTRO de los pasillos:
         # en un pasillo de 0.30m el centro queda a 0.15m de cada pared,
         # costo alto pero transitable, y siempre menor que pegado a la pared.
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 6.0
         inflation_radius: 0.30
       always_send_full_costmap: true
 
@@ -220,7 +220,7 @@ local_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         # Mismo criterio que el global: > media-anchura del robot (0.11) y
         # gradiente que centra al DWB en el pasillo.
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 6.0
         inflation_radius: 0.30
       always_send_full_costmap: true
 
