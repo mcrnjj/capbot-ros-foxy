@@ -72,7 +72,7 @@ def generate_launch_description():
             # v1: mas liviana que v2 (menos GPU por frame -> menos consumo).
             # OJO: el 1er arranque tras cambiar la red, TensorRT reconstruye
             # el engine (~3-5 min en la Nano); despues queda cacheado.
-            'network': 'ssd-mobilenet-v1',
+            'network': 'ssd-mobilenet-v2',
             'threshold': 0.5,
             # Throttle de inferencia (Hz): la GPU trabaja solo en estos frames.
             # A nav2 le sobra con 3 Hz (planner ~1 Hz, costmap local 5 Hz).
