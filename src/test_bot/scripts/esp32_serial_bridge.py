@@ -223,7 +223,7 @@ class Esp32SerialBridge(Node):
         # cuentas por vuelta de rueda en cuadratura 4x. Con esto se convierte
         # vel_*_cps (cuentas/s crudas) <-> rad/s de cada rueda.
         self.declare_parameter("wheel_radius", 0.035)      # m
-        self.declare_parameter("wheel_separation", 0.17)   # m (track width)
+        self.declare_parameter("wheel_separation", 0.17275)   # m (track width)
         self.declare_parameter("wheel_cpr", 898)            # cuentas/vuelta (4x)
 
         gp = self.get_parameter
