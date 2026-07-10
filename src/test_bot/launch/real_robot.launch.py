@@ -4,7 +4,7 @@ real_robot.launch.py - bringup del robot REAL en la Jetson (ROS2 Foxy, Docker).
   - robot_state_publisher (robot_real.urdf.xacro, sin lidar/gazebo)
   - csi_camera_node       (camara CSI -> /camera/image_raw + video H264 a la GUI)
   - aruco_localizer       (-> /aruco_pose)
-  - esp32_serial_bridge   (serie ESP32 -> /odom ; /cmd_vel -> VEL_CMD)
+  - esp32_serial_bridge   (serie ESP32 -> /odom [calculado en Jetson] ; /cmd_vel -> WHEEL_VEL_CMD por rueda)
   - ekf x2 (robot_localization): local (odom->base_link) y global (map->odom)
   - nav2 (map_server+planner+controller+recoveries+bt_navigator+waypoint_follower)
   - teleop_gateway + gui_bridge_node (puentes hacia capbot-host)
@@ -151,6 +151,11 @@ def generate_launch_description():
             'max_linear_speed': 0.6,    # m/s; ajustar a la velocidad real
             'max_angular_speed': 3.0,   # rad/s; idem
             'cmd_vel_timeout': 0.5,
+            # Deben calzar con description/robot_core.xacro (radio/separacion
+            # de ruedas) y capbot-ESP32/include/Config.h (Cfg::WHEEL_CPR).
+            'wheel_radius': 0.035,      # m
+            'wheel_separation': 0.17,   # m
+            'wheel_cpr': 910,           # cuentas/vuelta (cuadratura 4x)
         }],
         condition=IfCondition(enable_motion),
     )
