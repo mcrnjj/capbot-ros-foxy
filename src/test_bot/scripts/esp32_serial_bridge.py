@@ -224,7 +224,7 @@ class Esp32SerialBridge(Node):
         # vel_*_cps (cuentas/s crudas) <-> rad/s de cada rueda.
         self.declare_parameter("wheel_radius", 0.035)      # m
         self.declare_parameter("wheel_separation", 0.17)   # m (track width)
-        self.declare_parameter("wheel_cpr", 910)            # cuentas/vuelta (4x)
+        self.declare_parameter("wheel_cpr", 898)            # cuentas/vuelta (4x)
 
         gp = self.get_parameter
         self.port = gp("serial_port").value
