@@ -115,11 +115,11 @@ controller_server:
       # a 20 Hz. El costo FIJO por ciclo (costmap/TF/critics, no escala con
       # samples) ya se redujo a la mitad al bajar la frecuencia -- ese era el
       # problema real, no la cantidad de samples.
-      vx_samples: 5
+      vx_samples: 10
       vy_samples: 1
-      vtheta_samples: 6
-      sim_time: 1.0
-      linear_granularity: 0.05
+      vtheta_samples: 15
+      sim_time: 2.0
+      linear_granularity: 0.025
       # angular_granularity 0.025 -> 0.05: menos puntos por trayectoria donde
       # evaluan los critics (costo ~ largo/granularity). Impacto minimo en
       # calidad de giro, buen ahorro de CPU.
