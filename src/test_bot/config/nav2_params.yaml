@@ -157,10 +157,31 @@ global_costmap:
       track_unknown_space: false
       # TF map->base viene del EKF; margen amplio para no fallar bajo carga.
       transform_tolerance: 1.0
-      plugins: ["static_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
+      # Obstaculos detectados por object_detector (jetson-inference). El cloud
+      # trae 1 punto por objeto en base_link, APOYADO EN EL PISO (z = -0.035).
+      # min_obstacle_height debe quedar POR DEBAJO de eso: el default 0.0
+      # descartaria silenciosamente todos los puntos. Margen extra porque el
+      # error de pitch de la camara baja el punto ~3-4 cm a 2 m.
+      # clearing=true raytracea hacia cada deteccion; si el objeto desaparece
+      # del frame NO hay rayo que lo limpie -> la marca queda hasta que otra
+      # deteccion raytracee a traves, o el BT ejecute ClearCostmap (recovery).
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: detections
+        detections:
+          topic: /detected_objects/cloud
+          data_type: "PointCloud2"
+          marking: true
+          clearing: true
+          obstacle_range: 2.0     # = max_distance del detector; mas alla no es fiable
+          raytrace_range: 2.5
+          min_obstacle_height: -0.15
+          max_obstacle_height: 0.5
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.5
@@ -182,7 +203,24 @@ local_costmap:
       robot_radius: 0.22    # = xy_goal_tolerance (ver nota en goal_checker)
       # TF odom->base es local y estable, pero damos margen igual bajo carga.
       transform_tolerance: 0.5
-      plugins: ["inflation_layer"]
+      # Mismo obstacle_layer que el global (ver notas alla). Con la ventana de
+      # 1x1 m solo entran detecciones a <0.5 m del centro: es la evasion de
+      # ultimo medio metro para el critic ObstacleFootprint del DWB; la evasion
+      # "de ruta" la hace el planner con el obstacle_layer del costmap global.
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: detections
+        detections:
+          topic: /detected_objects/cloud
+          data_type: "PointCloud2"
+          marking: true
+          clearing: true
+          obstacle_range: 2.0
+          raytrace_range: 2.5
+          min_obstacle_height: -0.15
+          max_obstacle_height: 0.5
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.5

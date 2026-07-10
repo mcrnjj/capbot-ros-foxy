@@ -91,13 +91,13 @@ def generate_launch_description():
             'sensor_id': 0,
             'capture_width': 1280, 'capture_height': 720,
             'output_width': 640, 'output_height': 480,
-            'framerate': 10, 'flip_method': 0,
+            'framerate': 30, 'flip_method': 0,
             'frame_id': 'camera_link_optical',
             'camera_info_url': camera_info,
             'enable_video': True,
             'host_ip': '',          # vacio => usa la env HOST_IP
             'video_port': 5000,
-            'video_bitrate_kbps': 1500,
+            'video_bitrate_kbps': 4000,
         }],
     )
 
