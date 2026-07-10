@@ -84,8 +84,8 @@ controller_server:
       # (fue justo lo que paso). Da la semantica pedida: "goal alcanzado" =
       # el CUERPO del robot (circulo de radio robot_radius) toca el punto
       # del goal, exactamente cuando center-to-goal == robot_radius.
-      xy_goal_tolerance: 0.10
-      yaw_goal_tolerance: 0.20
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.30
       stateful: true
 
     FollowPath:
@@ -99,7 +99,7 @@ controller_server:
       min_speed_xy: 0.0
       max_speed_xy: 0.3
       min_speed_theta: 0.0
-      acc_lim_x: 0.8
+      acc_lim_x: 0.5
       acc_lim_y: 0.0
       acc_lim_theta: 1.5
       decel_lim_x: -0.8
