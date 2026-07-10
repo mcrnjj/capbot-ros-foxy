@@ -68,7 +68,11 @@ def generate_launch_description():
         name='csi_camera_node', output='screen',
         parameters=[{
             'sensor_id': 0,
-            'capture_width': 1280, 'capture_height': 720,
+            # 1640x1232 = modo NATIVO 4:3 del IMX219 (30 fps). Antes se
+            # capturaba 1280x720 (16:9) y se escalaba a 640x480 (4:3), lo que
+            # DEFORMA la imagen y rompe la geometria de ArUco aunque la
+            # calibracion fuera buena. Recalibrar camera.yaml con este pipeline.
+            'capture_width': 1640, 'capture_height': 1232,
             'output_width': 640, 'output_height': 480,
             'framerate': 30, 'flip_method': 0,
             'frame_id': 'camera_link_optical',

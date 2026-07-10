@@ -208,6 +208,16 @@ class ArucoLocalizer(Node):
         self.declare_parameter("min_marker_area_px", 150.0)
         self.declare_parameter("ambiguity_ratio_threshold", 1.5)
 
+        # Covarianza DINAMICA de /aruco_pose: base * (1 + cov_reproj_scale*err_px)
+        # * (1 + cov_dist_scale*d^2) / n_marcadores. Una vista cercana y nitida
+        # corrige fuerte el EKF de map; una lejana/borrosa apenas lo mueve.
+        # Con la camara SIN calibrar el err_px es alto y la covarianza crece
+        # sola (auto-desconfianza); al recalibrar camera.yaml se aprieta sola.
+        self.declare_parameter("base_cov_xy", 0.02)        # m^2 (var x e y)
+        self.declare_parameter("base_cov_yaw", 0.05)       # rad^2
+        self.declare_parameter("cov_reproj_scale", 0.5)    # por px de err medio
+        self.declare_parameter("cov_dist_scale", 1.0)      # por m^2 de distancia
+
         db_path = self.get_parameter("markers_db").get_parameter_value().string_value
         if not db_path:
             self.get_logger().fatal("Parametro 'markers_db' obligatorio.")
@@ -380,7 +390,7 @@ class ArucoLocalizer(Node):
 
             # Peso = area / (1 + error_reproj). Marcadores grandes y nitidos pesan mas.
             weight = area / (1.0 + err)
-            estimates.append((marker_id, T_map_base, weight, err))
+            estimates.append((marker_id, T_map_base, weight, err, distance))
             diagnostics.append(
                 f"id={marker_id} OK(d={distance:.2f}m,err={err:.2f}px,w={weight:.0f})"
             )
@@ -400,9 +410,20 @@ class ArucoLocalizer(Node):
         # Filtro temporal
         T_filtered = self.pose_filter.update(T_combined)
 
-        self._publish(T_filtered, msg.header.stamp)
-
         mean_err = float(np.mean([e[3] for e in estimates]))
+        min_dist = float(min(e[4] for e in estimates))
+
+        # Covarianza dinamica (ver comentario en __init__): escala con el error
+        # de reproyeccion y la distancia al marcador mas cercano; promediar n
+        # marcadores reduce la varianza ~1/n.
+        n = len(estimates)
+        err_scale = 1.0 + float(self.get_parameter("cov_reproj_scale").value) * mean_err
+        dist_scale = 1.0 + float(self.get_parameter("cov_dist_scale").value) * min_dist ** 2
+        cov_xy = float(self.get_parameter("base_cov_xy").value) * err_scale * dist_scale / n
+        cov_yaw = float(self.get_parameter("base_cov_yaw").value) * err_scale / n
+
+        self._publish(T_filtered, msg.header.stamp, cov_xy, cov_yaw)
+
         self.reproj_pub.publish(Float32(data=mean_err))
 
         ids_str = ",".join(str(e[0]) for e in estimates)
@@ -416,7 +437,7 @@ class ArucoLocalizer(Node):
 
     # -------------------- helpers --------------------
 
-    def _publish(self, T_map_base, stamp):
+    def _publish(self, T_map_base, stamp, cov_xy=0.075, cov_yaw=0.15):
         t, q = matrix_to_translation_quat(T_map_base)
 
         msg = PoseWithCovarianceStamped()
@@ -430,9 +451,9 @@ class ArucoLocalizer(Node):
         msg.pose.pose.orientation.z = float(q[2])
         msg.pose.pose.orientation.w = float(q[3])
         cov = list(msg.pose.covariance)
-        cov[0] = 0.075
-        cov[7] = 0.075
-        cov[35] = 0.15
+        cov[0] = float(cov_xy)
+        cov[7] = float(cov_xy)
+        cov[35] = float(cov_yaw)
         msg.pose.covariance = cov
         self.pose_pub.publish(msg)
 

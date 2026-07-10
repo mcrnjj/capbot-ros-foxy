@@ -225,6 +225,19 @@ class Esp32SerialBridge(Node):
         self.declare_parameter("wheel_radius", 0.035)      # m
         self.declare_parameter("wheel_separation", 0.17)   # m (track width)
         self.declare_parameter("wheel_cpr", 910)            # cuentas/vuelta (4x)
+        # Calibracion fina de odometria (ver docs/odometry_tuning.md):
+        #  - left/right_wheel_scale: corrige radios DESIGUALES entre ruedas
+        #    (el robot "curva" al ir recto -> deriva de yaw). Multiplican la
+        #    velocidad medida de cada rueda; con radios iguales quedan en 1.0.
+        #  - wheel_separation es la separacion EFECTIVA (mayor que la fisica
+        #    con ruedas anchas); se calibra girando en el sitio N vueltas.
+        self.declare_parameter("left_wheel_scale", 1.0)
+        self.declare_parameter("right_wheel_scale", 1.0)
+        # Covarianzas del twist de /odom (lo que el EKF fusiona). Subir
+        # odom_vyaw_cov si hay mucho slip en giros -> el EKF de map confia
+        # mas en ArUco para el yaw.
+        self.declare_parameter("odom_vx_cov", 0.02)
+        self.declare_parameter("odom_vyaw_cov", 0.04)
 
         gp = self.get_parameter
         self.port = gp("serial_port").value
@@ -240,6 +253,10 @@ class Esp32SerialBridge(Node):
         self.wheel_radius = float(gp("wheel_radius").value)
         self.wheel_separation = float(gp("wheel_separation").value)
         self.wheel_cpr = float(gp("wheel_cpr").value)
+        self.left_wheel_scale = float(gp("left_wheel_scale").value)
+        self.right_wheel_scale = float(gp("right_wheel_scale").value)
+        self.odom_vx_cov = float(gp("odom_vx_cov").value)
+        self.odom_vyaw_cov = float(gp("odom_vyaw_cov").value)
 
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
         self.telem_pub = self.create_publisher(String, "/esp32/telemetry", 10)
@@ -369,8 +386,9 @@ class Esp32SerialBridge(Node):
             return
 
         # cuentas/s -> rad/s de cada rueda -> m/s tangencial de cada rueda.
-        omega_left = (vel_left_cps / self.wheel_cpr) * TWO_PI
-        omega_right = (vel_right_cps / self.wheel_cpr) * TWO_PI
+        # *_wheel_scale corrige radios desiguales entre ruedas (calibracion).
+        omega_left = (vel_left_cps / self.wheel_cpr) * TWO_PI * self.left_wheel_scale
+        omega_right = (vel_right_cps / self.wheel_cpr) * TWO_PI * self.right_wheel_scale
         v_left = omega_left * self.wheel_radius
         v_right = omega_right * self.wheel_radius
 
@@ -409,8 +427,8 @@ class Esp32SerialBridge(Node):
         msg.twist.twist.linear.x = v
         msg.twist.twist.angular.z = w
         # Covarianzas (el EKF usa sobre todo el twist; la pose la corrige ArUco).
-        msg.twist.covariance[0] = 0.02     # vx
-        msg.twist.covariance[35] = 0.04    # vyaw
+        msg.twist.covariance[0] = self.odom_vx_cov      # vx
+        msg.twist.covariance[35] = self.odom_vyaw_cov   # vyaw
         msg.pose.covariance[0] = 0.05
         msg.pose.covariance[7] = 0.05
         msg.pose.covariance[35] = 0.10
