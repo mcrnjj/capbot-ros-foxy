@@ -8,7 +8,7 @@ y la base de datos de marcadores ArUco para capbot-ros-foxy.
 Produce en src/test_bot/config/ (o --out-dir):
   test_map_maze.pgm        imagen PGM P5 (blanco=libre, negro=ocupado)
   test_map_maze.yaml       descriptor nav2_map_server
-  markers_db_maze.yaml     poses de 5 marcadores ArUco (DICT_5X5_250, id 0-4)
+  markers_db_maze.yaml     poses de 15 marcadores ArUco (DICT_5X5_250, id 0-14)
 
 Uso:
   python3 make_maze_map.py
@@ -85,8 +85,13 @@ def wall_col_x(c):
     col = WALL_PX + (c + 1) * (CELL_PX + WALL_PX) - WALL_PX + (WALL_PX - 1) / 2.0
     return ORIGIN_X + (col + 0.5) * RESOLUTION
 
+def wall_row_y(r):
+    """Centro en Y de la pared horizontal entre fila r y r+1."""
+    row = WALL_PX + (r + 1) * (CELL_PX + WALL_PX) - WALL_PX + (WALL_PX - 1) / 2.0
+    return row_to_y(row)
+
 # ---------------------------------------------------------------------------
-# Posiciones de los 5 marcadores ArUco (id 0-4)
+# Posiciones de los 15 marcadores ArUco (id 0-14): 10 interiores + 5 exteriores
 #
 # Convencion RPY identica a generate_aruco_models.py:
 #   roll = pi/2, pitch = 0  ->  marcador vertical
@@ -95,43 +100,46 @@ def wall_col_x(c):
 #         pi/2  = normal apunta hacia el ESTE  (+X)
 #        -pi/2  = normal apunta hacia el OESTE (-X)
 #
-# Notas de ubicacion fisica:
-#   id 0  Pared norte exterior, centrado en columna 2 -> robot lo ve desde filas 0-1
-#   id 1  Pared sur exterior, centrado en columna 1   -> robot lo ve al alcanzar zona objetivo
-#   id 2  Pared oeste exterior, centrado en fila 1    -> cubre el pasillo izquierdo
-#   id 3  Pared este exterior, centrado en fila 4     -> cubre el pasillo derecho
-#   id 4  Pared interior entre c=1 y c=2 en fila 2   -> cobertura en el centro del laberinto
+# Lista hardcodeada: cada marcador va centrado en un tramo de pared que
+# existe en MAZE, con la cara hacia una celda abierta (r, c) indicada en
+# el comentario. Prioriza paredes interiores para cubrir el centro del
+# laberinto; los 5 exteriores rellenan los pasillos perimetrales.
 # ---------------------------------------------------------------------------
 PI   = math.pi
 PI_2 = math.pi / 2.0
 
 def _marker_poses():
-    # Pared norte exterior: row 0..1, centro row=0.5
-    y_north = row_to_y(0.5)  # 1.05
-    # Pared sur exterior: row 84..85, centro row=84.5
+    # Centros de las paredes exteriores
+    y_north = row_to_y(0.5)                                        #  1.05
     y_south = row_to_y(HEIGHT_PX - WALL_PX + (WALL_PX - 1) / 2.0)  # -1.05
-    # Pared oeste exterior: col 0..1, centro col=0.5
-    x_west  = col_to_x(0.5)   # -0.875
-    # Pared este exterior: col 70..71, centro col=70.5
-    x_east  = col_to_x(WIDTH_PX - WALL_PX + (WALL_PX - 1) / 2.0)  # 0.875
+    x_west  = col_to_x(0.5)                                        # -0.875
+    x_east  = col_to_x(WIDTH_PX - WALL_PX + (WALL_PX - 1) / 2.0)   #  0.875
 
-    # Pared interior entre c=1 y c=2: cols 28..29, centro col=28.5
-    wall_col_c1c2 = WALL_PX + 2 * (CELL_PX + WALL_PX) - WALL_PX + (WALL_PX - 1) / 2.0  # 28.5
-    x_inner  = col_to_x(wall_col_c1c2)  # -0.175
+    def xc(c):  # x del centro de la columna c
+        return cell_center(0, c)[0]
 
-    _, y_row1 = cell_center(1, 0)   # y del centro de la fila 1
-    _, y_row4 = cell_center(4, 0)   # y del centro de la fila 4
-    x_col1, _ = cell_center(0, 1)   # x del centro de la columna 1
-    x_col2, _ = cell_center(0, 2)   # x del centro de la columna 2
-    _, y_row2  = cell_center(2, 0)  # y del centro de la fila 2
+    def yr(r):  # y del centro de la fila r
+        return cell_center(r, 0)[1]
 
     return [
         # (id, x, y, z, roll, pitch, yaw)
-        (0,  x_col2,  y_north, MARKER_Z,  PI_2, 0.0,  0.0  ),  # Norte, cara sur
-        (1,  x_col1,  y_south, MARKER_Z,  PI_2, 0.0,  PI   ),  # Sur, cara norte
-        (2,  x_west,  y_row1,  MARKER_Z,  PI_2, 0.0,  PI_2 ),  # Oeste, cara este
-        (3,  x_east,  y_row4,  MARKER_Z,  PI_2, 0.0, -PI_2 ),  # Este, cara oeste
-        (4,  x_inner, y_row2,  MARKER_Z,  PI_2, 0.0,  PI_2 ),  # Interior, cara este
+        # --- Interiores (10) ---
+        (0,  xc(1),         wall_row_y(0), MARKER_Z, PI_2, 0.0,  PI   ),  # pared r0|r1 c1, cara norte -> visto desde (0,1)
+        (1,  xc(3),         wall_row_y(0), MARKER_Z, PI_2, 0.0,  0.0  ),  # pared r0|r1 c3, cara sur   -> visto desde (1,3)
+        (2,  wall_col_x(1), yr(1),         MARKER_Z, PI_2, 0.0,  PI_2 ),  # pared c1|c2 r1, cara este  -> visto desde (1,2)
+        (3,  xc(0),         wall_row_y(1), MARKER_Z, PI_2, 0.0,  0.0  ),  # pared r1|r2 c0, cara sur   -> visto desde (2,0)
+        (4,  xc(4),         wall_row_y(1), MARKER_Z, PI_2, 0.0,  0.0  ),  # pared r1|r2 c4, cara sur   -> visto desde (2,4)
+        (5,  xc(3),         wall_row_y(2), MARKER_Z, PI_2, 0.0,  0.0  ),  # pared r2|r3 c3, cara sur   -> visto desde (3,3)
+        (6,  xc(1),         wall_row_y(3), MARKER_Z, PI_2, 0.0,  PI   ),  # pared r3|r4 c1, cara norte -> visto desde (3,1)
+        (7,  wall_col_x(0), yr(4),         MARKER_Z, PI_2, 0.0,  PI_2 ),  # pared c0|c1 r4, cara este  -> visto desde (4,1)
+        (8,  wall_col_x(3), yr(4),         MARKER_Z, PI_2, 0.0, -PI_2 ),  # pared c3|c4 r4, cara oeste -> visto desde (4,3)
+        (9,  xc(2),         wall_row_y(4), MARKER_Z, PI_2, 0.0,  PI   ),  # pared r4|r5 c2, cara norte -> visto desde (4,2)
+        # --- Exteriores (5) ---
+        (10, xc(2),         y_north,       MARKER_Z, PI_2, 0.0,  0.0  ),  # Norte, cara sur   -> visto desde (0,2)
+        (11, x_east,        yr(1),         MARKER_Z, PI_2, 0.0, -PI_2 ),  # Este, cara oeste  -> visto desde (1,4)
+        (12, x_east,        yr(4),         MARKER_Z, PI_2, 0.0, -PI_2 ),  # Este, cara oeste  -> visto desde (4,4)
+        (13, xc(1),         y_south,       MARKER_Z, PI_2, 0.0,  PI   ),  # Sur, cara norte   -> visto desde (5,1)
+        (14, x_west,        yr(3),         MARKER_Z, PI_2, 0.0,  PI_2 ),  # Oeste, cara este  -> visto desde (3,0)
     ]
 
 MARKER_POSES = _marker_poses()
