@@ -34,6 +34,12 @@ MsgTypes (capbot-ESP32/include/Config.h):
        puente calcula la odometria (velocidad de rueda -> v,w -> pose 2D)
        a partir de vel_left_cps/vel_right_cps y las constantes geometricas
        del robot (wheel_radius, wheel_separation, wheel_cpr).
+       El puente ademas AGREGA un campo nav_ref (no viene del ESP32) antes
+       de reenviar por /esp32/telemetry y WS:
+       {..., nav_ref: {v, w,               Twist crudo (clamped) de /cmd_vel
+                       wheel_left, wheel_right}}  mismo mixing que WHEEL_VEL_CMD
+       Es la referencia que el Jetson esta comandando (nav2), no lo que el
+       firmware esta logrando (eso sigue en ctrl.sp_left/sp_right).
   0x21 ESP_HELLO      -
 
 Funciones:
@@ -261,6 +267,7 @@ class Esp32SerialBridge(Node):
         self._cmd_active = False
         self._hold_until = 0.0       # hasta este t (s) el modo actual es inrobable
         self._last_wheel_cmd = (0.0, 0.0)   # (rad/s izq, rad/s der) — buffer modo nav
+        self._last_cmd_vw = (0.0, 0.0)      # (v m/s, w rad/s) — Twist crudo de /cmd_vel (nav2)
         self._last_motor_cmd = (0, 0)       # (left, right) PWM crudo — buffer modo manual
         self._ser = None
         self._write_lock = threading.Lock()
@@ -345,9 +352,14 @@ class Esp32SerialBridge(Node):
             data = json.loads(text)
         except (UnicodeDecodeError, ValueError):
             return
-        # Reenvia la telemetria cruda (JSON) -> teleop_gateway la difunde por WS a la GUI.
+        # Agrega la referencia de velocidad de nav2 (lo que el Jetson esta
+        # comandando, no lo que el firmware esta logrando) antes de reenviar
+        # la telemetria -> teleop_gateway la difunde por WS a la GUI.
+        v, w = self._last_cmd_vw
+        wl_ref, wr_ref = self._last_wheel_cmd
+        data["nav_ref"] = {"v": v, "w": w, "wheel_left": wl_ref, "wheel_right": wr_ref}
         smsg = String()
-        smsg.data = text
+        smsg.data = json.dumps(data)
         self.telem_pub.publish(smsg)
 
         try:
@@ -446,6 +458,7 @@ class Esp32SerialBridge(Node):
             return  # manual tiene el control y esta fresco: nav no lo roba
         v = max(-self.max_lin, min(self.max_lin, msg.linear.x))
         w = max(-self.max_ang, min(self.max_ang, msg.angular.z))
+        self._last_cmd_vw = (v, w)
         self._last_wheel_cmd = self._wheel_speeds(v, w)
         self._last_cmd_t = now
         self._cmd_active = True
@@ -471,6 +484,7 @@ class Esp32SerialBridge(Node):
             self._cmd_active = False
             self._hold_until = 0.0
             self._last_wheel_cmd = (0.0, 0.0)
+            self._last_cmd_vw = (0.0, 0.0)
             self._last_motor_cmd = (0, 0)
 
     def _on_pid_param(self, msg):
@@ -502,6 +516,7 @@ class Esp32SerialBridge(Node):
             return
         self._set_mode(mode)
         self._last_wheel_cmd = (0.0, 0.0)
+        self._last_cmd_vw = (0.0, 0.0)
         self._last_motor_cmd = (0, 0)
         self._cmd_active = True
         self._last_cmd_t = self._now()
