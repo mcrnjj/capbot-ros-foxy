@@ -89,24 +89,24 @@ controller_server:
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: false
-      min_vel_x: -0.1
+      min_vel_x: -0.05
       min_vel_y: 0.0
       # Laberinto: pasillos de 0.30m vs robot de 0.20m de ancho -> 5cm de
       # margen fisico TOTAL por lado. A 0.3 m/s y 10 Hz el robot avanza 3cm
       # por ciclo de control (mas de medio margen); a 0.15 m/s son 1.5cm y
       # el DWB alcanza a corregir antes de tocar pared.
-      max_vel_x: 0.15
+      max_vel_x: 0.1
       max_vel_y: 0.0
-      max_vel_theta: 0.9
-      min_speed_xy: -0.1
-      max_speed_xy: 0.15
+      max_vel_theta: 0.5
+      min_speed_xy: -0.05
+      max_speed_xy: 0.1
       min_speed_theta: 0.0
-      acc_lim_x: 0.5
+      acc_lim_x: 0.1
       acc_lim_y: 0.0
-      acc_lim_theta: 1.2
-      decel_lim_x: -0.5
+      acc_lim_theta: 0.5
+      decel_lim_x: -0.1
       decel_lim_y: 0.0
-      decel_lim_theta: -1.2
+      decel_lim_theta: -0.5
       # --- Presupuesto de CPU del DWB (lo mas caro del stack en el Nano) ---
       # El costo de SIMULACION escala como vx_samples*vtheta_samples*
       # controller_frequency; a 10 Hz (mitad de los 20 Hz que no andaban)
