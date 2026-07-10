@@ -41,20 +41,35 @@ COLS = 5
 # ---------------------------------------------------------------------------
 # Parametros del mapa
 # ---------------------------------------------------------------------------
-RESOLUTION   = 0.025   # m/pixel
-CELL_SIZE_M  = 0.30    # 30 cm por celda (igual que CELL_SIZE_CM en game.py)
-WALL_SIZE_M  = 0.05    # 5 cm de espesor de pared
+# Medicion fisica real (no la asuncion vieja de 5cm de pared):
+#   - Cada pared es una placa de madera de 30x30x3 mm.
+#   - WALL_PITCH_M = distancia centro-de-pared a centro-de-pared-opuesta
+#     dentro de una celda = 0.30 m (esto es lo que se midio, NO el piso libre).
+#   - Con pared de 3mm, el piso libre real por celda es 0.30 - 0.003 = 0.297 m
+#     (antes se asumia 0.30 m de piso libre + 0.05 m de pared = pitch 0.35 m,
+#     un laberinto 16% mas grande de lo real).
+#
+# RESOLUTION = espesor de pared exacto (3mm/px): la pared se representa con
+# EXACTAMENTE 1 px sin error de redondeo, y 0.30/0.003 = 100 exacto -> sin
+# deriva acumulada de pixeles al mosaiquear 5x6 celdas. A una resolucion mas
+# gruesa (p.ej. 25mm/px original) 3mm redondea a 0 px y la pared desaparece
+# de la grilla (nav2 dejaria de verla como obstaculo).
+RESOLUTION   = 0.003    # m/pixel = espesor real de la pared
+WALL_SIZE_M  = 0.003    # 3 mm de espesor real de pared
+WALL_PITCH_M = 0.30     # medido: centro-pared a centro-pared-opuesta por celda
 
-CELL_PX = round(CELL_SIZE_M / RESOLUTION)   # 12 px = 30 cm
-WALL_PX = round(WALL_SIZE_M / RESOLUTION)   # 2 px  = 5 cm
+WALL_PX = max(1, round(WALL_SIZE_M / RESOLUTION))   # 1 px = 3 mm
+PITCH_PX = round(WALL_PITCH_M / RESOLUTION)          # 100 px = 30 cm
+CELL_PX = PITCH_PX - WALL_PX                         # 99 px = 29.7 cm de piso libre
+CELL_SIZE_M = CELL_PX * RESOLUTION                   # 0.297 m (derivado, no medido)
 
 # Dimensiones totales de la imagen:
 #   WALL_PX borde externo + COLS * (CELL_PX + WALL_PX) [cada celda + su pared derecha/inferior]
-WIDTH_PX  = WALL_PX + COLS * (CELL_PX + WALL_PX)   # 72 px = 1.80 m
-HEIGHT_PX = WALL_PX + ROWS * (CELL_PX + WALL_PX)   # 86 px = 2.15 m
+WIDTH_PX  = WALL_PX + COLS * (CELL_PX + WALL_PX)   # 501 px = 1.503 m
+HEIGHT_PX = WALL_PX + ROWS * (CELL_PX + WALL_PX)   # 601 px = 1.803 m
 
-ORIGIN_X = -(WIDTH_PX  * RESOLUTION) / 2.0    # -0.9000 m
-ORIGIN_Y = -(HEIGHT_PX * RESOLUTION) / 2.0    # -1.0750 m
+ORIGIN_X = -(WIDTH_PX  * RESOLUTION) / 2.0
+ORIGIN_Y = -(HEIGHT_PX * RESOLUTION) / 2.0
 
 MAP_NAME     = "maze"
 ARUCO_DICT   = "DICT_5X5_250"
