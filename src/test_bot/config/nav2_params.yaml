@@ -84,7 +84,7 @@ controller_server:
       # (fue justo lo que paso). Da la semantica pedida: "goal alcanzado" =
       # el CUERPO del robot (circulo de radio robot_radius) toca el punto
       # del goal, exactamente cuando center-to-goal == robot_radius.
-      xy_goal_tolerance: 0.1
+      xy_goal_tolerance: 0.15
       yaw_goal_tolerance: 0.30
       stateful: true
 
@@ -163,7 +163,7 @@ global_costmap:
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.5
+        cost_scaling_factor: 1.5
         inflation_radius: 0.10
       always_send_full_costmap: true
 
