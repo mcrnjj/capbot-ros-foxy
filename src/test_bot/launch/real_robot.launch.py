@@ -95,7 +95,7 @@ def generate_launch_description():
         'base_frame': 'base_link',
         'odom_frame': 'odom',
         'map_frame': 'map',
-        'max_distance': 2.0,
+        'max_distance': 0.45,
         # 27 es muy laxo a proposito: con camera.yaml SIN calibrar el error de
         # reproyeccion es alto. RECALIBRAR camera.yaml y bajar a ~3.0.
         'max_reproj_error_px': 60.0,
