@@ -76,14 +76,12 @@ controller_server:
       # el CENTRO tiene que casi coincidir con el goal, lo cual en la practica
       # nunca se veia "temprano" -- el problema real era el planner.tolerance
       # de 0.30 (arriba) corriendo el punto final lejos del goal pedido.
-      # Igual a robot_radius (ver FollowPath.xy_goal_tolerance y robot_radius
-      # de ambos costmaps mas abajo, EN ESTE ARCHIVO deben editarse juntos:
-      # rcl_yaml_param_parser de Foxy NO soporta anchors/alias de YAML
-      # ("Will not support aliasing"), asi que no se puede compartir el valor
-      # con &/* -- eso crashea TODOS los nodos nav2 que cargan este archivo
-      # (fue justo lo que paso). Da la semantica pedida: "goal alcanzado" =
-      # el CUERPO del robot (circulo de radio robot_radius) toca el punto
-      # del goal, exactamente cuando center-to-goal == robot_radius.
+      # Debe editarse junto con FollowPath.xy_goal_tolerance mas abajo EN
+      # ESTE ARCHIVO: rcl_yaml_param_parser de Foxy NO soporta anchors/alias
+      # de YAML ("Will not support aliasing"), asi que no se puede compartir
+      # el valor con &/* -- eso crashea TODOS los nodos nav2 que cargan este
+      # archivo (fue justo lo que paso). 0.10 ~ media-anchura del footprint
+      # (0.11): "goal alcanzado" = el cuerpo del robot toca el punto del goal.
       xy_goal_tolerance: 0.10
       yaw_goal_tolerance: 0.20
       stateful: true
@@ -93,11 +91,15 @@ controller_server:
       debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 0.3
+      # Laberinto: pasillos de 0.30m vs robot de 0.20m de ancho -> 5cm de
+      # margen fisico TOTAL por lado. A 0.3 m/s y 10 Hz el robot avanza 3cm
+      # por ciclo de control (mas de medio margen); a 0.15 m/s son 1.5cm y
+      # el DWB alcanza a corregir antes de tocar pared.
+      max_vel_x: 0.15
       max_vel_y: 0.0
       max_vel_theta: 1.2
       min_speed_xy: 0.0
-      max_speed_xy: 0.3
+      max_speed_xy: 0.15
       min_speed_theta: 0.0
       acc_lim_x: 0.8
       acc_lim_y: 0.0
@@ -125,7 +127,7 @@ controller_server:
       # Tolerante a jitter de TF cuando la CPU esta cargada (evita abortar el
       # control por "transform timeout").
       transform_tolerance: 1.0
-      xy_goal_tolerance: 0.22    # = robot_radius (ver nota en goal_checker arriba)
+      xy_goal_tolerance: 0.10    # = goal_checker.xy_goal_tolerance (deben ir juntos)
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true
@@ -136,7 +138,12 @@ controller_server:
       GoalAlign.forward_point_distance: 0.10
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
-      ObstacleFootprint: 0.5
+      # OJO: el nombre correcto del parametro es ObstacleFootprint.scale
+      # (antes decia "ObstacleFootprint: 0.5", que nav2 ignora en silencio).
+      # Este critic es el freno duro contra paredes: ademas del puntaje,
+      # RECHAZA (excepcion -> trayectoria ilegal) cualquier trayectoria cuyo
+      # footprint pise una celda letal del local costmap, sin importar scale.
+      ObstacleFootprint.scale: 1.0
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
@@ -152,7 +159,15 @@ global_costmap:
       publish_frequency: 0.5
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.22    # = xy_goal_tolerance (ver nota en goal_checker)
+      # Footprint REAL medido del URDF (robot_core.xacro), relativo a
+      # base_link (eje de las ruedas): chasis 0.16x0.20 desplazado hacia
+      # adelante (x en [-0.03, 0.13], y en [-0.10, 0.10]) + 1cm de margen.
+      # Antes: robot_radius 0.22 -> circulo de 0.44m que NO CABE en los
+      # pasillos de 0.30m del laberinto; el unico motivo por el que "andaba"
+      # era que inflation_radius (0.10) < robot_radius, lo que dejaba sin
+      # marcar la banda letal alrededor de las paredes y desactivaba de
+      # facto toda la deteccion de colisiones del planner.
+      footprint: "[[0.14, 0.11], [0.14, -0.11], [-0.04, -0.11], [-0.04, 0.11]]"
       resolution: 0.05
       track_unknown_space: false
       # TF map->base viene del EKF; margen amplio para no fallar bajo carga.
@@ -163,8 +178,14 @@ global_costmap:
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.5
-        inflation_radius: 0.10
+        # inflation_radius DEBE ser mayor que la media-anchura del robot
+        # (0.11); si no, la banda letal junto a las paredes queda sin marcar
+        # (el bug que causo el choque). 0.30 ademas crea un gradiente de
+        # costo que empuja los planes de NavFn al CENTRO de los pasillos:
+        # en un pasillo de 0.30m el centro queda a 0.15m de cada pared,
+        # costo alto pero transitable, y siempre menor que pegado a la pared.
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.30
       always_send_full_costmap: true
 
 local_costmap:
@@ -173,20 +194,32 @@ local_costmap:
       use_sim_time: false
       update_frequency: 5.0
       publish_frequency: 1.0     # solo viz; sin lidar el local costmap casi no cambia
-      global_frame: odom
+      # ANTES este costmap era una ventana rodante de 1x1m en frame odom con
+      # SOLO inflation_layer y NINGUNA fuente de obstaculos (no hay lidar):
+      # una grilla VACIA. El critic ObstacleFootprint del DWB evaluaba contra
+      # eso, asi que el controlador veia todas las trayectorias como libres
+      # y podia estamparse contra cualquier pared sin enterarse.
+      # Sin sensor de obstaculos, la UNICA fuente de paredes es el mapa
+      # estatico -> costmap fijo en frame map con static_layer (el mapa del
+      # laberinto es 72x86 celdas, mas barato incluso que la ventana rodante).
+      # static_layer con rolling_window:false redimensiona la grilla al mapa,
+      # asi que width/height/resolution salen del propio mapa.
+      global_frame: map
       robot_base_frame: base_link
-      rolling_window: true
-      width: 1
-      height: 1
-      resolution: 0.05
-      robot_radius: 0.22    # = xy_goal_tolerance (ver nota en goal_checker)
-      # TF odom->base es local y estable, pero damos margen igual bajo carga.
-      transform_tolerance: 0.5
-      plugins: ["inflation_layer"]
+      rolling_window: false
+      footprint: "[[0.14, 0.11], [0.14, -0.11], [-0.04, -0.11], [-0.04, 0.11]]"
+      # TF map->base viene del EKF (igual que el global): margen bajo carga.
+      transform_tolerance: 1.0
+      plugins: ["static_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.5
-        inflation_radius: 0.35
+        # Mismo criterio que el global: > media-anchura del robot (0.11) y
+        # gradiente que centra al DWB en el pasillo.
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.30
       always_send_full_costmap: true
 
 recoveries_server:
